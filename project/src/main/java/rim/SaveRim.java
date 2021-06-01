@@ -362,119 +362,174 @@ public class SaveRim {
 		default: return len4Binary(tmp, len);
 		}
 	}
+	
+	// Booleanオブジェクトを書き込む.
+	private static final void writeBoolean(OutputStream out, byte[] tmp, Boolean v)
+		throws IOException {
+		// valueがnullの場合は０(false)を設定.
+		if(v == null) {
+			len1Binary(tmp, 0);
+		} else {
+			len1Binary(tmp, v ? 1 : 0);
+		}
+		out.write(tmp, 0, 1);
+	}
 
+	// Byteオブジェクトを書き込む.
+	private static final void writeByte(OutputStream out, byte[] tmp, Byte v)
+		throws IOException {
+		// valueがnullの場合は０を設定.
+		if(v == null) {
+			len1Binary(tmp, 0);
+		} else {
+			len1Binary(tmp, v);
+		}
+		out.write(tmp, 0, 1);
+	}
+	
+	// Shortオブジェクトを書き込む.
+	private static final void writeShort(OutputStream out, byte[] tmp, Short v)
+		throws IOException {
+		// valueがnullの場合は０を設定.
+		if(v == null) {
+			len2Binary(tmp, 0);
+		} else {
+			len2Binary(tmp, v);
+		}
+		out.write(tmp, 0, 2);
+	}
+
+	// Integerオブジェクトを書き込む.
+	private static final void writeInteger(OutputStream out, byte[] tmp, Integer v)
+		throws IOException {
+		// valueがnullの場合は０を設定.
+		if(v == null) {
+			len4Binary(tmp, 0);
+		} else {
+			len4Binary(tmp, v);
+		}
+		out.write(tmp, 0, 4);
+	}
+	
+	// Longオブジェクトを書き込む.
+	private static final void writeLong(OutputStream out, byte[] tmp, Long v)
+		throws IOException {
+		// valueがnullの場合は０を設定.
+		if(v == null) {
+			len8Binary(tmp, 0L);
+		} else {
+			len8Binary(tmp, v);
+		}
+		out.write(tmp, 0, 8);
+	}
+
+	// Floatオブジェクトを書き込む.
+	private static final void writeFloat(OutputStream out, byte[] tmp, Float v)
+		throws IOException {
+		// valueがnullの場合は０を設定.
+		if(v == null) {
+			len4Binary(tmp, Float.floatToIntBits(0f));
+		} else {
+			len4Binary(tmp, Float.floatToIntBits(v));
+		}
+		out.write(tmp, 0, 4);
+	}
+	
+	// Doubleオブジェクトを書き込む.
+	private static final void writeDouble(OutputStream out, byte[] tmp, Double v)
+		throws IOException {
+		// valueがnullの場合は０を設定.
+		if(v == null) {
+			len8Binary(tmp, Double.doubleToLongBits(0d));
+		} else {
+			len8Binary(tmp, Double.doubleToLongBits(v));
+		}
+		out.write(tmp, 0, 8);
+	}
+
+	// Stringオブジェクトを書き込む.
+	private static final void writeString(OutputStream out, byte[] tmp, int stringHeaderLength,
+		String v) throws IOException {
+		// valueがnullの場合は０文字を設定.
+		if(v == null) {
+			len4Binary(tmp, 0);
+			out.write(tmp, 0, stringHeaderLength);
+		} else {
+			// 文字列がnullや空の場合も０文字を設定.
+			if(v.isEmpty()) {
+				len4Binary(tmp, 0);
+				out.write(tmp, 0, stringHeaderLength);
+			} else {
+				final byte[] b = v.getBytes("UTF8");
+				int len = b.length;
+				// 文字列のバイナリ長を設定.
+				out.write(len1_4Binary(tmp, stringHeaderLength, len),
+					0, stringHeaderLength);
+				// 文字列を設定.
+				out.write(b, 0, len);
+			}
+		}
+	}
+	
+	// Dateオブジェクトを書き込む.
+	private static final void writeDate(OutputStream out, byte[] tmp, Date v)
+		throws IOException {
+		// valueがnullの場合は０を設定.
+		if(v == null) {
+			len8Binary(tmp, 0L);
+		} else {
+			len8Binary(tmp, v.getTime());
+		}
+		out.write(tmp, 0, 8);
+	}
+	
 	// 1つのValueを出力.
 	private static final void convertValue(OutputStream out, byte[] tmp, int stringHeaderLength,
 		ColumnType type, Object value) throws IOException {
-		// valueがnullの場合は０を設定.
-		// 文字列がnullや空の場合も０文字を設定.
 		switch(type) {
 			case Boolean: {
-				Boolean v = (Boolean)type.convert(value);
-				if(v == null) {
-					len1Binary(tmp, 0);
-				} else {
-					len1Binary(tmp, v ? 1 : 0);
-				}
-				out.write(tmp, 0, 1);
+				writeBoolean(out, tmp, (Boolean)type.convert(value));
 				break;
 			}
 			case Byte: {
-				Byte v = (Byte)type.convert(value);
-				if(v == null) {
-					len1Binary(tmp, 0);
-				} else {
-					len1Binary(tmp, v);
-				}
-				out.write(tmp, 0, 1);
+				writeByte(out, tmp, (Byte)type.convert(value));
 				break;
 			}
 			case Short: {
-				Short v = (Short)type.convert(value);
-				if(v == null) {
-					len2Binary(tmp, 0);
-				} else {
-					len2Binary(tmp, v);
-				}
-				out.write(tmp, 0, 2);
+				writeShort(out, tmp, (Short)type.convert(value));
 				break;
 			}
 			case Integer: {
-				Integer v = (Integer)type.convert(value);
-				if(v == null) {
-					len4Binary(tmp, 0);
-				} else {
-					len4Binary(tmp, v);
-				}
-				out.write(tmp, 0, 4);
+				writeInteger(out, tmp, (Integer)type.convert(value));
 				break;
 			}
 			case Long: {
-				Long v = (Long)type.convert(value);
-				if(v == null) {
-					len8Binary(tmp, 0L);
-				} else {
-					len8Binary(tmp, v);
-				}
-				out.write(tmp, 0, 8);
+				writeLong(out, tmp, (Long)type.convert(value));
 				break;
 			}
 			case Float: {
-				Float v = (Float)type.convert(value);
-				if(v == null) {
-					len4Binary(tmp, Float.floatToIntBits(0f));
-				} else {
-					len4Binary(tmp, Float.floatToIntBits(v));
-				}
-				out.write(tmp, 0, 4);
+				writeFloat(out, tmp, (Float)type.convert(value));
 				break;
 			}
 			case Double: {
-				Double v = (Double)type.convert(value);
-				if(v == null) {
-					len8Binary(tmp, Double.doubleToLongBits(0d));
-				} else {
-					len8Binary(tmp, Double.doubleToLongBits(v));
-				}
-				out.write(tmp, 0, 8);
+				writeDouble(out, tmp, (Double)type.convert(value));
 				break;
 			}
 			case String: {
-				if(value == null) {
-					len4Binary(tmp, 0);
-					out.write(tmp, 0, stringHeaderLength);
-				} else {
-					String v = (String)type.convert(value);
-					if(v.isEmpty()) {
-						len4Binary(tmp, 0);
-						out.write(tmp, 0, stringHeaderLength);
-					} else {
-						final byte[] b = v.getBytes("UTF8");
-						int len = b.length;
-						// 文字列のバイナリ長を設定.
-						out.write(len1_4Binary(tmp, stringHeaderLength, len),
-							0, stringHeaderLength);
-						// 文字列を設定.
-						out.write(b, 0, len);
-					}
-				}
+				writeString(out, tmp, stringHeaderLength,
+					(String)type.convert(value));
 				break;
 			}
 			case Date: {
-				Date v = (Date)type.convert(value);
-				if(v == null) {
-					len8Binary(tmp, 0L);
-				} else {
-					len8Binary(tmp, v.getTime());
-				}
-				out.write(tmp, 0, 8);
+				writeDate(out, tmp, (Date)type.convert(value));
 				break;
 			}
 		}
 	}
 
 	// ヘッダ情報を出力.
-	private static final void writeHeader(OutputStream out, byte[] tmp, CsvReader csv, ColumnType[] types)
+	private static final void writeHeader(OutputStream out, byte[] tmp, CsvReader csv,
+		ColumnType[] types)
 		throws IOException {
 		// 列数を設定(2byte).
 		int len = csv.getHeaderSize();

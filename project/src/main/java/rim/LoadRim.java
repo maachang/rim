@@ -221,44 +221,98 @@ public class LoadRim {
 		return new Object[] {columnLength, columns, columnTypes};
 	}
 	
+	// Booleanオブジェクトを読み込む.
+	private static final Boolean readBoolean(InputStream in, byte[] tmp)
+		throws IOException {
+		readBinary(tmp, in, 1);
+		return bin1Int(tmp) != 0;
+	}
+	
+	// Byteオブジェクトを読み込む.
+	private static final Byte readByte(InputStream in, byte[] tmp)
+		throws IOException {
+		readBinary(tmp, in, 1);
+		return (byte)bin1Int(tmp);
+	}
+	
+	// Shortオブジェクトを読み込む.
+	private static final Short readShort(InputStream in, byte[] tmp)
+		throws IOException {
+		readBinary(tmp, in, 2);
+		return (short)bin2Int(tmp);
+	}
+	
+	// Integerオブジェクトを読み込む.
+	private static final Integer readInteger(InputStream in, byte[] tmp)
+		throws IOException {
+		readBinary(tmp, in, 4);
+		return bin4Int(tmp);
+	}
+	
+	// Longオブジェクトを読み込む.
+	private static final Long readLong(InputStream in, byte[] tmp)
+		throws IOException {
+		readBinary(tmp, in, 8);
+		return bin8Long(tmp);
+	}
+	
+	// Floatオブジェクトを読み込む.
+	private static final Float readFloat(InputStream in, byte[] tmp)
+		throws IOException {
+		readBinary(tmp, in, 4);
+		return Float.intBitsToFloat(bin4Int(tmp));
+	}
+	
+	// Doubleオブジェクトを読み込む.
+	private static final Double readDouble(InputStream in, byte[] tmp)
+		throws IOException {
+		readBinary(tmp, in, 8);
+		return Double.longBitsToDouble(bin8Long(tmp));
+	}
+	
+	// Stringオブジェクトを読み込む.
+	private static final String readString(InputStream in, byte[] tmp,
+		Object[] strBuf, int stringHeaderLength) throws IOException {
+		readBinary(tmp, in, stringHeaderLength);
+		int len = bin1_4Int(tmp, stringHeaderLength);
+		if(len == 0) {
+			return "";
+		}
+		byte[] bin = getReadStringBuffer(strBuf, len);
+		readBinary(bin, in, len);
+		return new String(bin, 0, len, "UTF8");
+	}
+	
+	// Dateオブジェクトを読み込む.
+	private static final Date readDate(InputStream in, byte[] tmp)
+		throws IOException {
+		readBinary(tmp, in, 8);
+		return new Date(bin8Long(tmp));
+	}
+	
 	// 指定型の要素を取得.
 	private static final Object getValue(InputStream in, byte[] tmp, Object[] strBuf,
 		int stringHeaderLength, ColumnType type)
 		throws IOException {
 		switch(type) {
 		case Boolean:
-			readBinary(tmp, in, 1);
-			return bin1Int(tmp) != 0;
+			return readBoolean(in, tmp);
 		case Byte:
-			readBinary(tmp, in, 1);
-			return (byte)bin1Int(tmp);
+			return readByte(in, tmp);
 		case Short:
-			readBinary(tmp, in, 2);
-			return (short)bin2Int(tmp);
+			return readShort(in, tmp);
 		case Integer:
-			readBinary(tmp, in, 4);
-			return bin4Int(tmp);
+			return readInteger(in, tmp);
 		case Long:
-			readBinary(tmp, in, 8);
-			return bin8Long(tmp);
+			return readLong(in, tmp);
 		case Float:
-			readBinary(tmp, in, 4);
-			return Float.intBitsToFloat(bin4Int(tmp));
+			return readFloat(in, tmp);
 		case Double:
-			readBinary(tmp, in, 8);
-			return Double.longBitsToDouble(bin8Long(tmp));
+			return readDouble(in, tmp);
 		case String:
-			readBinary(tmp, in, stringHeaderLength);
-			int len = bin1_4Int(tmp, stringHeaderLength);
-			if(len == 0) {
-				return "";
-			}
-			byte[] bin = getReadStringBuffer(strBuf, len);
-			readBinary(bin, in, len);
-			return new String(bin, 0, len, "UTF8");
+			return readString(in, tmp, strBuf, stringHeaderLength);
 		case Date:
-			readBinary(tmp, in, 8);
-			return new Date(bin8Long(tmp));
+			return readDate(in, tmp);
 		}
 		throw new RimException("Unknown column type: " + type);
 	}
@@ -344,7 +398,7 @@ public class LoadRim {
 	
 	
 	public static final void main(String[] args) throws Exception {
-		String file = "Z:/home/maachang/project/rim/race_horse_master.rim";
+		String file = "Z:/home/maachang/project/rim/sampleData/race_horse_master.rim";
 		
 		Rim rim = load(file);
 	}
