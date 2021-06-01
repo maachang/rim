@@ -1,0 +1,27 @@
+#!/bin/bash
+#
+ARGS=${*}
+
+# project version.
+VERSION=0.0.1
+
+# project name.
+PROJECT_NAME=rim
+
+# execute class.
+EXECUTE_CLAZZ=rim.command.CreateRimCommand
+
+# JAR name.
+JAR_NAME=${PROJECT_NAME}-${VERSION}.jar
+
+# firstMemory.
+STM=256
+
+# maxMemory.
+EXM=256
+
+# option.
+OPT="-Djava.awt.headless=true -Djava.net.preferIPv4Stack=true"
+
+# execute java.
+java -Xms${STM}m -Xmx${EXM}m ${OPT} -classpath ${JAR_NAME} ${EXECUTE_CLAZZ} ${ARGS}

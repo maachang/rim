@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+ *******************************************************************************
+  rim.
+   
+   Copyright (c) 2021 masahito suzuki, Inc. All Rights Reserved.
+ *******************************************************************************
+-->
+<project name="rim" default="all" basedir=".">
+    
+  <!-- ===================================================================== -->
+  <!-- set env.                                                              -->
+  <!-- ===================================================================== -->
+  <property name="project.name" value="rim"/>
+  <property name="version" value="0.0.1"/>
+  <property name="src.dir" value="project/src/main/java/"/>
+  <property name="dest.dir" value="project/classes"/>
+  <property name="jar.dir" value="jar" />
+  <property name="jar.name" value="${project.name}-${version}.jar"/>
+  <property name="doc.dir" value="doc/"/>
+  <property name="debug" value="on"/>
+  <property name="deprecation" value="on"/>
+  <property name="optimize" value="on"/>
+  <property name="nowarn" value="on"/>
+  <property name="unchecked" value="on"/>
+  
+  <!-- ===================================================================== -->
+  <!-- include Jar path.                                                     -->
+  <!-- ===================================================================== -->
+  <path id="path.lib">
+    <fileset dir="./project">
+      <include name="lib/**/*.jar"/>
+      <include name="jar/**/*.jar"/>
+    </fileset>
+  </path>
+  
+  <!-- ===================================================================== -->
+  <!-- all.                                                                  -->
+  <!-- ===================================================================== -->
+  <target name="all" depends="compile, jar"/>
+  
+  <!-- ===================================================================== -->
+  <!-- conpile.                                                              -->
+  <!-- ===================================================================== -->
+  <target name="compile">
+    <mkdir dir="${dest.dir}" />
+    <javac includeantruntime="false"
+            srcdir="${src.dir}"
+            destdir="${dest.dir}"
+            encoding="UTF8"
+            debug="${debug}"
+            deprecation="${deprecation}"
+            optimize="${optimize}"
+            nowarn="${nowarn}"
+    >
+      <classpath refid="path.lib" />
+    </javac>
+  </target>
+  
+  <!-- ===================================================================== -->
+  <!-- create JarFile.                                                       -->
+  <!-- ===================================================================== -->
+  <target name="jar" depends="compile">
+    <jar jarfile="${jar.name}" basedir="${dest.dir}">
+    </jar>
+  </target>
+  
+  <!-- ===================================================================== -->
+  <!-- make javadoc.                                                         -->
+  <!-- ===================================================================== -->
+  <target name="javadoc">
+    <delete dir="${doc.dir}${project.name}" />
+    <mkdir dir="${doc.dir}" />
+    <mkdir dir="${doc.dir}${project.name}" />
+    <javadoc sourcepath="${src.dir}"
+        packagenames="*"
+        destdir="${doc.dir}${project.name}"
+        defaultexcludes="yes"
+        author="true"
+        version="true"
+        use="true"
+        Public="true"
+        nohelp="true"
+        encoding="UTF8"
+        docencoding="UTF8"
+        charset="UTF8"
+        doctitle="${project.name} - version . ${version}"
+        windowtitle="${project.name} - version . ${version}">
+    </javadoc>
+  </target>
+  
+  <!-- ===================================================================== -->
+  <!-- clean work file.                                                      -->
+  <!-- ===================================================================== -->
+  <target name="clean">
+    <delete dir="${dest.dir}" />
+    <delete file="${jar.name}" />
+    <delete dir="${doc.dir}" />
+  </target>
+
+</project>
