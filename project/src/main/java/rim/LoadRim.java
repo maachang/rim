@@ -389,7 +389,14 @@ public class LoadRim {
 				
 				// 対象のインデックスに情報を追加.
 				len = index.add((Comparable)value, rowIdList, rowIdLength);
+				// 予定長の取得が行われた場合.
 				if(planIndexSize <= len) {
+					// 予定長より大きな情報取得が行われた場合は例外出力.
+					if(planIndexSize != len) {
+						throw new RimException(
+							"Information larger than the expected index length(" +
+							planIndexSize + ") was read: " + len);
+					}
 					// このインデックス追加が完了した場合.
 					break;
 				}
