@@ -45,7 +45,7 @@ public class SeabassCompBuffer {
 		if(data == null || data.length < length) {
 			byte[] b = new byte[length + (int)((length * 0.5d) + 32)];
 			if(data != null) {
-				System.arraycopy(data, 0, b, 0, data.length);
+				System.arraycopy(data, 0, b, 0, length);
 			}
 			data = b;
 		}
