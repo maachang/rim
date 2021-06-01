@@ -573,7 +573,7 @@ public class SaveRim {
 	}
 
 	// １つのIndexを出力.
-	private static final void writeOneIndex(OutputStream out, byte[] tmp, int stringHeaderLength,
+	private static final int writeOneIndex(OutputStream out, byte[] tmp, int stringHeaderLength,
 		int byte1_4Len, ColumnType type, IndexColumn index)
 		throws IOException {
 
@@ -594,7 +594,6 @@ public class SaveRim {
 		//  {value: 210, [111]}
 		//
 
-		int pos = 0;
 		IndexRow row, bef = null;
 		final ObjectList<IndexRow> list = index.getRows();
 		final int len = list.size();
@@ -606,38 +605,32 @@ public class SaveRim {
 		out.write(len1_4Binary(tmp, byte1_4Len, len), 0, byte1_4Len);
 
 		// インデックス内容を出力.
+		int pos = 0;
+		int ret = 0;
 		for(int i = 0; i < len; i ++) {
 			row = list.get(i);
-			// 最初の位置情報じゃない場合.
-			if(i != 0) {
-				// 前回value条件と一致しない場合.
-				if(!bef.getValue().equals(row.getValue())) {
+			// 前回value条件と一致しない場合.
+			if(bef != null && !bef.getValue().equals(row.getValue())) {
 
-					// 最適化Index情報を保存.
-					optimizeWriteIndex(out, tmp, stringHeaderLength, byte1_4Len,
-						type, list, pos, i);
+				// 最適化Index情報を保存.
+				ret += optimizeWriteIndex(out, tmp, stringHeaderLength, byte1_4Len,
+					type, list, pos, i);
 
-					// 現在をポジションとする.
-					pos = i;
-				}
-			// 最初の位置情報の場合.
-			} else {
+				// 現在をポジションとする.
 				pos = i;
 			}
 			// 次の処理での前回情報として保存.
 			bef = row;
 		}
 		
-		// 書き込まれてない内容が存在する場合.
-		if(pos + 1 < len) {
-			// 最適化Index情報を保存.
-			optimizeWriteIndex(out, tmp, stringHeaderLength, byte1_4Len,
-				type, list, pos, len - 1);
-		}
+		// 最後の情報を書き込み.
+		ret += optimizeWriteIndex(out, tmp, stringHeaderLength, byte1_4Len,
+			type, list, pos, len);
+		return ret;
 	}
 
 	// 最適化されたIndex書き込み.
-	private static final void optimizeWriteIndex(OutputStream out, byte[] tmp, int stringHeaderLength,
+	private static final int optimizeWriteIndex(OutputStream out, byte[] tmp, int stringHeaderLength,
 		int byte1_4Len, ColumnType type, ObjectList<IndexRow> list, int start, int end)
 		throws IOException {
 
@@ -648,9 +641,12 @@ public class SaveRim {
 		out.write(len1_4Binary(tmp, byte1_4Len, end - start), 0, byte1_4Len);
 
 		// 連続する行ID群を出力.
+		int ret = 0;
 		for(int i = start; i < end; i ++) {
 			out.write(len1_4Binary(tmp, byte1_4Len, list.get(i).getRowId()),
 				0, byte1_4Len);
+			ret ++;
 		}
+		return ret;
 	}
 }

@@ -159,6 +159,7 @@ public class LoadRim {
 		throws IOException {
 		final int rLen = in.read(out, 0, len);
 		if(len != rLen) {
+			System.out.println("len: " + len + " rLen: " + rLen);
 			throw new RimException("Failed to read Rim information.");
 		}
 	}
@@ -388,7 +389,7 @@ public class LoadRim {
 				
 				// 対象のインデックスに情報を追加.
 				len = index.add((Comparable)value, rowIdList, rowIdLength);
-				if(planIndexSize <= len + 1) {
+				if(planIndexSize <= len) {
 					// このインデックス追加が完了した場合.
 					break;
 				}

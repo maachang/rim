@@ -46,11 +46,12 @@ public class RimIndex {
 		private byte[] rows;
 
 		public RimIndexElement1(Comparable value, int[] list, int len) {
-			this.value = value;
-			rows = new byte[len];
+			final byte[] r = new byte[len];
 			for(int i = 0; i < len; i ++) {
-				rows[i] = (byte)(list[i] & 0x000000ff);
+				r[i] = (byte)(list[i] & 0x000000ff);
 			}
+			this.rows = r;
+			this.value = value;
 		}
 
 		@Override
@@ -77,11 +78,12 @@ public class RimIndex {
 		private short[] rows;
 
 		public RimIndexElement2(Comparable value, int[] list, int len) {
-			this.value = value;
-			rows = new short[len];
+			final short[] r = new short[len];
 			for(int i = 0; i < len; i ++) {
-				rows[i] = (short)(list[i] & 0x0000ffff);
+				r[i] = (short)(list[i] & 0x0000ffff);
 			}
+			this.rows = r;
+			this.value = value;
 		}
 
 		@Override
@@ -108,9 +110,10 @@ public class RimIndex {
 		private int[] rows;
 
 		public RimIndexElement4(Comparable value, int[] list, int len) {
+			int[] r = new int[len];
+			System.arraycopy(list, 0, r, 0, len);
+			this.rows = r;
 			this.value = value;
-			rows = new int[len];
-			System.arraycopy(list, 0, this.rows, 0, len);
 		}
 
 		@Override
@@ -210,7 +213,7 @@ public class RimIndex {
 	protected void fix() {
 		if(index == null) {
 			return;
-		} else if(planIndexSize != indexSize + 1) {
+		} else if(planIndexSize != indexSize) {
 			throw new RimException(
 				"It does not match the expected number of index rows(" +
 				planIndexSize + "/" + indexSize + ")");
