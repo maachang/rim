@@ -142,71 +142,6 @@ public class SeabassComp {
 	}
 
 	/**
-	 * データ解凍.
-	 *
-	 * @param in
-	 *            解凍対象のバイナリを設定します.
-	 * @return SeabassCompBuffer 解凍されたBufferオブジェクトが返却されます.
-	 */
-	public static final SeabassCompBuffer decompress(byte[] in) {
-		return decompress(null, in, 0, in.length);
-	}
-
-	/**
-	 * データ解凍.
-	 *
-	 * @param out
-	 *            解凍結果を格納するBufferオブジェクトを設定します.
-	 *            設定されない場合は、内部で新規作成されます.
-	 * @param in
-	 *            解凍対象のバイナリを設定します.
-	 * @return SeabassCompBuffer 解凍されたBufferオブジェクトが返却されます.
-	 */
-	public static final SeabassCompBuffer decompress(SeabassCompBuffer out, byte[] in) {
-		return decompress(out, in, 0, in.length);
-	}
-
-	/**
-	 * データ解凍.
-	 *
-	 * @param in
-	 *            解凍対象のバイナリを設定します.
-	 * @param offset
-	 *            解凍対象バイナリの開始位置を設定します.
-	 * @param length
-	 *            解凍対象の長さを設定します.
-	 * @return SeabassCompBuffer 解凍されたBufferオブジェクトが返却されます.
-	 */
-	public static final SeabassCompBuffer decompress(byte[] in, int offset, int length) {
-		return decompress(null, in, offset, length);
-	}
-
-	/**
-	 * データ解凍.
-	 *
-	 * @param in
-	 *            解凍対象のバイナリを設定します.
-	 * @return SeabassCompBuffer 解凍されたBufferオブジェクトが返却されます.
-	 */
-	public static final SeabassCompBuffer decompress(SeabassCompBuffer in) {
-		return decompress(in.getRawBuffer(), 0, in.getLimit());
-	}
-
-	/**
-	 * データ解凍.
-	 *
-	 * @param out
-	 *            解凍結果を格納するBufferオブジェクトを設定します.
-	 *            設定されない場合は、内部で新規作成されます.
-	 * @param in
-	 *            解凍対象のバイナリを設定します.
-	 * @return SeabassCompBuffer 解凍されたBufferオブジェクトが返却されます.
-	 */
-	public static final SeabassCompBuffer decompress(SeabassCompBuffer out, SeabassCompBuffer in) {
-		return decompress(out, in.getRawBuffer(), 0, in.getLimit());
-	}
-
-	/**
 	 * データ圧縮.
 	 *
 	 * @param out
@@ -248,7 +183,7 @@ public class SeabassComp {
 		// ヘッダに元の長さをセット.
 		int n = length;
 		while (n > 0) {
-			target[targetIndex++] = (n >= 128) ? (byte) (0x80 | (n & 0x7f)) : (byte) n;
+			target[targetIndex++] = (n >= 128) ? (byte) (0x080 | (n & 0x07f)) : (byte) n;
 			n >>= 7;
 		}
 
@@ -414,6 +349,72 @@ public class SeabassComp {
 		}
 		out.setLimit(targetIndex);
 		return out;
+	}
+
+
+	/**
+	 * データ解凍.
+	 *
+	 * @param in
+	 *            解凍対象のバイナリを設定します.
+	 * @return SeabassCompBuffer 解凍されたBufferオブジェクトが返却されます.
+	 */
+	public static final SeabassCompBuffer decompress(byte[] in) {
+		return decompress(null, in, 0, in.length);
+	}
+
+	/**
+	 * データ解凍.
+	 *
+	 * @param out
+	 *            解凍結果を格納するBufferオブジェクトを設定します.
+	 *            設定されない場合は、内部で新規作成されます.
+	 * @param in
+	 *            解凍対象のバイナリを設定します.
+	 * @return SeabassCompBuffer 解凍されたBufferオブジェクトが返却されます.
+	 */
+	public static final SeabassCompBuffer decompress(SeabassCompBuffer out, byte[] in) {
+		return decompress(out, in, 0, in.length);
+	}
+
+	/**
+	 * データ解凍.
+	 *
+	 * @param in
+	 *            解凍対象のバイナリを設定します.
+	 * @param offset
+	 *            解凍対象バイナリの開始位置を設定します.
+	 * @param length
+	 *            解凍対象の長さを設定します.
+	 * @return SeabassCompBuffer 解凍されたBufferオブジェクトが返却されます.
+	 */
+	public static final SeabassCompBuffer decompress(byte[] in, int offset, int length) {
+		return decompress(null, in, offset, length);
+	}
+
+	/**
+	 * データ解凍.
+	 *
+	 * @param in
+	 *            解凍対象のバイナリを設定します.
+	 * @return SeabassCompBuffer 解凍されたBufferオブジェクトが返却されます.
+	 */
+	public static final SeabassCompBuffer decompress(SeabassCompBuffer in) {
+		return decompress(in.getRawBuffer(), 0, in.getLimit());
+	}
+
+	/**
+	 * データ解凍.
+	 *
+	 * @param out
+	 *            解凍結果を格納するBufferオブジェクトを設定します.
+	 *            設定されない場合は、内部で新規作成されます.
+	 * @param in
+	 *            解凍対象のバイナリを設定します.
+	 * @return SeabassCompBuffer 解凍されたBufferオブジェクトが返却されます.
+	 */
+	public static final SeabassCompBuffer decompress(SeabassCompBuffer out, SeabassCompBuffer in) {
+		return decompress(out, in.getRawBuffer(), 0, in.getLimit());
 	}
 
 	/**
