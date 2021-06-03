@@ -6,12 +6,15 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.util.Date;
 import java.util.List;
+import java.util.zip.GZIPOutputStream;
 
 import rim.exception.RimException;
-import rim.util.BinaryBuffer;
 import rim.util.CsvReader;
 import rim.util.CsvRow;
 import rim.util.ObjectList;
+import rim.util.UTF8IO;
+import rim.util.seabass.SeabassComp;
+import rim.util.seabass.SeabassCompBuffer;
 
 /**
  * CSVファイルから、rim(readInMemory)データーを作成.
@@ -19,11 +22,11 @@ import rim.util.ObjectList;
  * 指定された列を型指定して、インデックス化します.
  * これにより、CSVデータを高速にインデックス検索が可能です.
  */
+@SuppressWarnings({ "rawtypes", "unchecked" })
 public class SaveRim {
 	/**
 	 * 1つのIndex行情報.
 	 */
-	@SuppressWarnings({ "unchecked", "rawtypes" })
 	private static final class IndexRow implements Comparable<IndexRow> {
 		final int rowId;
 		final Comparable value;
@@ -67,11 +70,29 @@ public class SaveRim {
 			return rows;
 		}
 	}
+	
+	// 利用頻度の高いパラメータを１つにまとめた内容.
+	private static final class RimParams {
+		// 属性.
+		Object attribute;
+		// テンポラリバッファ.
+		byte[] tmp;
+		// 文字列テンポラリバッファ.
+		Object[] strBuf;
+		// 文字列の長さを保持するバイト値.
+		int stringHeaderLength;
+		// 行数に応じた行情報を保持するバイト値.
+		int byte1_4Len;
+		// 再利用可能なBinaryのOutputStream.
+		RbbOutputStream rbb;
+	}
 
 	// 読み込み対象のCSVデーター.
 	private CsvReader csv;
 	// 出力先のファイル名.
 	private String outFileName;
+	// 圧縮タイプ.
+	private CompressType compressType;
 	// 文字の型に対する長さを出力するバイナリ長(1byteから4byte).
 	private int stringHeaderLength;
 	// CSV列毎の変換型群.
@@ -82,20 +103,37 @@ public class SaveRim {
 
 	/**
 	 * コンストラクタ.
-	 * @param csv
-	 * @param outFileName
+	 * @param csv 読み込み対象のCSVを設定します.
+	 * @param outFileName 出力先ファイル名を設定します.
 	 */
 	public SaveRim(CsvReader csv, String outFileName) {
-		this(csv, outFileName, RimConstants.DEFAULT_STRING_HEADER_LENGTH);
+		this(csv, outFileName, CompressType.None,
+			RimConstants.DEFAULT_STRING_HEADER_LENGTH);
 	}
 
 	/**
 	 * コンストラクタ.
-	 * @param csv
-	 * @param outFileName
-	 * @param stringHeaderLength
+	 * @param csv 読み込み対象のCSVを設定します.
+	 * @param outFileName 出力先ファイル名を設定します.
+	 * @param compressType 圧縮タイプを設定します.
 	 */
-	public SaveRim(CsvReader csv, String outFileName, int stringHeaderLength) {
+	public SaveRim(CsvReader csv, String outFileName, CompressType compressType) {
+		this(csv, outFileName, compressType,
+			RimConstants.DEFAULT_STRING_HEADER_LENGTH);
+	}
+
+	/**
+	 * コンストラクタ.
+	 * @param csv 読み込み対象のCSVを設定します.
+	 * @param outFileName 出力先ファイル名を設定します.
+	 * @param compressType 圧縮タイプを設定します.
+	 * @param stringHeaderLength 文字列の長さを管理するバイト数を設定します.
+	 */
+	public SaveRim(CsvReader csv, String outFileName, CompressType compressType,
+		int stringHeaderLength) {
+		if(compressType == null) {
+			compressType = CompressType.None;
+		}
 		if(stringHeaderLength <= 0) {
 			stringHeaderLength = 1;
 		} else if(stringHeaderLength > 4) {
@@ -103,6 +141,7 @@ public class SaveRim {
 		}
 		this.csv = csv;
 		this.outFileName = outFileName;
+		this.compressType = compressType;
 		this.stringHeaderLength = stringHeaderLength;
 	}
 
@@ -179,20 +218,39 @@ public class SaveRim {
 				getIndexTypes();
 			}
 			// インデックスリストを作成.
-			IndexColumn[] indexList = createIndexList(csv, indexColumns);
+			final IndexColumn[] indexList = createIndexList(csv, indexColumns);
+			
+			// よく使うパラメータをまとめたオブジェクトを作成.
+			final RimParams params = new RimParams();
+			
+			// stringHeaderLengthをRimParamsにセット.
+			params.stringHeaderLength = stringHeaderLength;
 
-			// 増加可能なバイナリバッファ.
-			BinaryBuffer buf = new BinaryBuffer();
+			// テンポラリ情報.
+			params.tmp = new byte[8];
+			params.strBuf = new Object[] {
+				new byte[64]
+			};
+			params.rbb = new RbbOutputStream();
+			
+			// 圧縮タイプが「デフォルト圧縮」の場合.
+			if(CompressType.Default == compressType) {
+				
+				// 属性にSeabassCompのバッファを生成して設定.
+				params.attribute = new SeabassCompBuffer();
+			// 圧縮タイプが「GZIP圧縮」の場合.
+			} else if(CompressType.Gzip == compressType) {
+				
+				// 属性にRbbOutputStreamを生成して設定.
+				params.attribute = new RbbOutputStream();
+			}
 
-			// テンポラリバイナリ.
-			final byte[] tmp = new byte[8];
-
-			// CSVデーターのロード.
-			final int rowAll = loadCsv(buf, stringHeaderLength, tmp, csv,
-				indexTypes, indexList);
+			// CSVデーターの読み込み.
+			ObjectList[] body = readCsv(csv, indexTypes, indexList);
+			final int rowAll = body[0].size();
 
 			// 全行数に対する長さ管理をするバイト数を取得.
-			final int byte1_4Len = RimUtil.intLengthByByte1_4Length(rowAll);
+			params.byte1_4Len = RimUtil.intLengthByByte1_4Length(rowAll);
 
 			// 保存先情報を生成.
 			out = new BufferedOutputStream(
@@ -201,27 +259,29 @@ public class SaveRim {
 
 			// シンボルを出力.
 			out.write(RimConstants.SIMBOL_BINARY);
+			
+			// 圧縮タイプを出力(1byte).
+			out.write(len1Binary(params.tmp, compressType.getId()), 0, 1);
 
 			// ヘッダ情報を出力.
-			writeHeader(out, tmp, csv, indexTypes);
+			writeHeader(out, params, csv, indexTypes);
 
 			// それぞれの文字列を表現する長さを管理するヘッダバイト数を出力
 			// (1byte).
-			out.write(len1Binary(tmp, stringHeaderLength), 0, 1);
+			out.write(len1Binary(params.tmp, params.stringHeaderLength), 0, 1);
 
 			// 全行数を書き込む(4byte).
-			out.write(len4Binary(tmp, rowAll), 0, 4);
+			out.write(len4Binary(params.tmp, rowAll), 0, 4);
 			
 			// 登録されてるインデックス数を書き込む(2byte).
-			out.write(len2Binary(tmp, indexColumns.size()), 0, 2);
+			out.write(len2Binary(params.tmp, indexColumns.size()), 0, 2);
 
 			// bodyデータを出力.
-			writeBody(out, tmp, buf);
-			buf = null;
+			writeBody(out, params, body, indexTypes, compressType);
+			body = null;
 
 			// インデックス情報を出力.
-			writeIndex(out, tmp, stringHeaderLength, byte1_4Len,
-				indexTypes, indexColumns);
+			writeIndex(out, params, indexTypes, compressType, indexColumns);
 
 			// 後処理.
 			out.close();
@@ -256,57 +316,54 @@ public class SaveRim {
 		}
 		return ret;
 	}
-
-	// CSVデータを読み込んでインデックスを作成する.
-	@SuppressWarnings("rawtypes")
-	private static final int loadCsv(BinaryBuffer body, int stringHeaderLength,
-		byte[] tmp, CsvReader csv, ColumnType[] typeList, IndexColumn[] indexList)
-			throws IOException {
-		Object o;
-		String e;
+	
+	// CSV内容を読み込んで列群とインデックス群を取得.
+	// Body情報は列毎に行情報を管理する.
+	private static final ObjectList[] readCsv(CsvReader csv, ColumnType[] typeList,
+		IndexColumn[] indexList) throws IOException {
 		int i;
 		int rowId = 0;
+		Object o;
 		List<String> row;
 		final int headerLength = csv.getHeaderSize();
-		OutputStream bout = body.getOutputStream();
-		try {
-			// csvデータのバイナリ化とIndex情報の抜き出し.
-			while(csv.hasNext()) {
-				row = csv.nextRow();
-				for(i = 0; i < headerLength; i ++) {
-					// １つの要素をBodyに出力.
-					convertValue(bout, tmp, stringHeaderLength, typeList[i],
-						e = row.get(i));
-					// 対象項目をIndex化する場合.
-					if(indexList[i] != null) {
-						// 変換できないものとnullはIndex対象にしない.
-						o = typeList[i].convert(e);
-						if(o != null) {
-							// indexに生成した行情報を追加.
-							indexList[i].rows.add(
-								new IndexRow(rowId, (Comparable)o));
-							o = null;
-						}
+		// 列単位行群のBody情報を生成.
+		ObjectList[] columns = new ObjectList[headerLength];
+		for(i = 0; i < headerLength; i ++) {
+			columns[i] = new ObjectList<Object>(512);
+		}
+		// csvデータのバイナリ化とIndex情報の抜き出し.
+		while(csv.hasNext()) {
+			// CSVの次の１行情報を取得.
+			row = csv.nextRow();
+			// 列単位でループ.
+			for(i = 0; i < headerLength; i ++) {
+				// 対象列の行情報にCSV列情報の行データを追加.
+				columns[i].add(
+					o = typeList[i].convert(row.get(i)));
+				// 対象項目をIndex化する場合.
+				if(indexList[i] != null) {
+					// 変換できないものとnullはIndex対象にしない.
+					if(o != null) {
+						// indexに生成した行情報を追加.
+						indexList[i].rows.add(
+							new IndexRow(rowId, (Comparable)o));
+						o = null;
 					}
 				}
-				rowId ++;
 			}
-			// インデックス情報のソート処理.
-			for(i = 0; i < headerLength; i ++) {
-				if(indexList[i] != null) {
-					indexList[i].rows.sort();
-				}
-			}
-			bout.close();
-			bout = null;
-			return rowId;
-		} finally {
-			if(bout != null) {
-				try {
-					bout.close();
-				} catch(Exception ee) {}
+			rowId ++;
+		}
+		// インデックス情報のソート処理.
+		for(i = 0; i < headerLength; i ++) {
+			if(indexList[i] != null) {
+				indexList[i].rows.sort();
 			}
 		}
+		// 列情報のスマート化.
+		for(i = 0; i < headerLength; i ++) {
+			columns[i].smart();
+		}
+		return columns;
 	}
 
 	// 1byteのデーターセット.
@@ -448,8 +505,8 @@ public class SaveRim {
 	}
 
 	// Stringオブジェクトを書き込む.
-	private static final void writeString(OutputStream out, byte[] tmp, int stringHeaderLength,
-		String v) throws IOException {
+	private static final void writeString(OutputStream out, byte[] tmp, Object[] strBuf,
+		int stringHeaderLength, String v) throws IOException {
 		// valueがnullの場合は０文字を設定.
 		if(v == null) {
 			len4Binary(tmp, 0);
@@ -460,8 +517,8 @@ public class SaveRim {
 				len4Binary(tmp, 0);
 				out.write(tmp, 0, stringHeaderLength);
 			} else {
-				final byte[] b = v.getBytes("UTF8");
-				int len = b.length;
+				byte[] b = RimUtil.getStringByteArray(strBuf, v.length() * 4);
+				int len = UTF8IO.encode(b, v);
 				// 文字列のバイナリ長を設定.
 				out.write(len1_4Binary(tmp, stringHeaderLength, len),
 					0, stringHeaderLength);
@@ -483,54 +540,107 @@ public class SaveRim {
 		out.write(tmp, 0, 8);
 	}
 	
+	// 圧縮条件が存在する場合は圧縮して書き込む.
+	private static final void writeCompress(OutputStream out, RimParams params,
+		CompressType compressType) throws IOException {
+		final RbbOutputStream rbb = params.rbb;
+		int len = rbb.getLength();
+		
+		// 圧縮無しの場合.
+		if(CompressType.None == compressType) {
+			
+			// データー長を設定.
+			out.write(len4Binary(params.tmp, len), 0, 4);
+			// データーを設定.
+			out.write(rbb.getBuffer(), 0, len);
+			
+		// 圧縮タイプが「デフォルト圧縮」の場合.
+		} else if(CompressType.Default == compressType) {
+			
+			// 圧縮用バッファを取得.
+			SeabassCompBuffer buf = (SeabassCompBuffer)params.attribute;
+			// 圧縮処理を受け取るバッファ長を取得して初期化.
+			buf.clearByMaxCompress(len);
+			
+			// 圧縮処理.
+			SeabassComp.compress(buf, rbb.getBuffer(), 0, len);
+			
+			final int resLen = buf.getLimit();
+			
+			// データー長を設定.
+			out.write(len4Binary(params.tmp, resLen), 0, 4);
+			// データーを設定.
+			out.write(buf.getRawBuffer(), 0, resLen);
+			
+		// 圧縮タイプが「GZIP圧縮」の場合.
+		} else if(CompressType.Gzip == compressType) {
+			
+			// 圧縮用バッファを取得.
+			RbbOutputStream wrbb = (RbbOutputStream)params.attribute;
+			wrbb.reset();
+			
+			GZIPOutputStream gzip = new GZIPOutputStream(wrbb);
+			gzip.write(rbb.getBuffer(), 0, len);
+			gzip.flush();
+			gzip.finish();
+			gzip.close();
+			gzip = null;
+			
+			final int resLen = wrbb.getLength();
+			
+			// データー長を設定.
+			out.write(len4Binary(params.tmp, resLen), 0, 4);
+			// データーを設定.
+			out.write(wrbb.getBuffer(), 0, resLen);
+		
+		// 不明な圧縮タイプ.
+		} else {
+			throw new RimException(
+				"Illegal compression type is set: " + compressType);
+		}
+	}
+	
 	// 1つのValueを出力.
-	private static final void convertValue(OutputStream out, byte[] tmp, int stringHeaderLength,
-		ColumnType type, Object value) throws IOException {
+	private static final void convertValue(OutputStream out, byte[] tmp, Object[] strBuf,
+		int stringHeaderLength, ColumnType type, Object value) throws IOException {
 		switch(type) {
-			case Boolean: {
-				writeBoolean(out, tmp, (Boolean)type.convert(value));
-				break;
-			}
-			case Byte: {
-				writeByte(out, tmp, (Byte)type.convert(value));
-				break;
-			}
-			case Short: {
-				writeShort(out, tmp, (Short)type.convert(value));
-				break;
-			}
-			case Integer: {
-				writeInteger(out, tmp, (Integer)type.convert(value));
-				break;
-			}
-			case Long: {
-				writeLong(out, tmp, (Long)type.convert(value));
-				break;
-			}
-			case Float: {
-				writeFloat(out, tmp, (Float)type.convert(value));
-				break;
-			}
-			case Double: {
-				writeDouble(out, tmp, (Double)type.convert(value));
-				break;
-			}
-			case String: {
-				writeString(out, tmp, stringHeaderLength,
-					(String)type.convert(value));
-				break;
-			}
-			case Date: {
-				writeDate(out, tmp, (Date)type.convert(value));
-				break;
-			}
+		case Boolean:
+			writeBoolean(out, tmp, (Boolean)type.convert(value));
+			break;
+		case Byte:
+			writeByte(out, tmp, (Byte)type.convert(value));
+			break;
+		case Short:
+			writeShort(out, tmp, (Short)type.convert(value));
+			break;
+		case Integer:
+			writeInteger(out, tmp, (Integer)type.convert(value));
+			break;
+		case Long:
+			writeLong(out, tmp, (Long)type.convert(value));
+			break;
+		case Float:
+			writeFloat(out, tmp, (Float)type.convert(value));
+			break;
+		case Double:
+			writeDouble(out, tmp, (Double)type.convert(value));
+			break;
+		case String:
+			writeString(out, tmp, strBuf, stringHeaderLength,
+				(String)type.convert(value));
+			break;
+		case Date:
+			writeDate(out, tmp, (Date)type.convert(value));
+			break;
 		}
 	}
 
 	// ヘッダ情報を出力.
-	private static final void writeHeader(OutputStream out, byte[] tmp, CsvReader csv,
-		ColumnType[] types)
+	private static final void writeHeader(OutputStream out, RimParams params,
+		CsvReader csv, ColumnType[] types)
 		throws IOException {
+		final byte[] tmp = params.tmp;
+		
 		// 列数を設定(2byte).
 		int len = csv.getHeaderSize();
 		out.write(len2Binary(tmp, len), 0, 2);
@@ -542,40 +652,164 @@ public class SaveRim {
 			out.write(len1Binary(tmp, name.length()), 0, 1);
 			out.write(name.getBytes("UTF8"));
 		}
+		
 		// 列型を設定(1byte).
 		for(int i = 0; i < len; i ++) {
 			out.write(len1Binary(tmp, types[i].getNo()), 0, 1);
 		}
 	}
-
-	// bodyデータを出力.
-	private static final void writeBody(OutputStream out, byte[] tmp, BinaryBuffer body)
+	
+	// 列群をBooleanで書き込む.
+	private static final void writeBooleanColumns(OutputStream out, byte[] tmp, ObjectList v)
 		throws IOException {
+		final int len = v.size();
+		final Object[] o = v.rawArray();
+		for(int i = 0; i < len; i ++) {
+			writeBoolean(out, tmp, (Boolean)o[i]);
+		}
+	}
 
-		// bodyデーターのバイナリを書き込み.
-		out.write(body.toByteArray());
+	// 列群をByteで書き込む.
+	private static final void writeByteColumns(OutputStream out, byte[] tmp, ObjectList v)
+		throws IOException {
+		final int len = v.size();
+		final Object[] o = v.rawArray();
+		for(int i = 0; i < len; i ++) {
+			writeByte(out, tmp, (Byte)o[i]);
+		}
+	}
+	
+	// 列群をShortで書き込む.
+	private static final void writeShortColumns(OutputStream out, byte[] tmp, ObjectList v)
+		throws IOException {
+		final int len = v.size();
+		final Object[] o = v.rawArray();
+		for(int i = 0; i < len; i ++) {
+			writeShort(out, tmp, (Short)o[i]);
+		}
+	}
 
-		// bodyをClose.
-		body.close();
+	// 列群をIntegerで書き込む.
+	private static final void writeIntegerColumns(OutputStream out, byte[] tmp, ObjectList v)
+		throws IOException {
+		final int len = v.size();
+		final Object[] o = v.rawArray();
+		for(int i = 0; i < len; i ++) {
+			writeInteger(out, tmp, (Integer)o[i]);
+		}
+	}
+	
+	// 列群をLongで書き込む.
+	private static final void writeLongColumns(OutputStream out, byte[] tmp, ObjectList v)
+		throws IOException {
+		final int len = v.size();
+		final Object[] o = v.rawArray();
+		for(int i = 0; i < len; i ++) {
+			writeLong(out, tmp, (Long)o[i]);
+		}
+	}
+
+	// 列群をFloatで書き込む.
+	private static final void writeFloatColumns(OutputStream out, byte[] tmp, ObjectList v)
+		throws IOException {
+		final int len = v.size();
+		final Object[] o = v.rawArray();
+		for(int i = 0; i < len; i ++) {
+			writeFloat(out, tmp, (Float)o[i]);
+		}
+	}
+	
+	// 列群をDoubleで書き込む.
+	private static final void writeDoubleColumns(OutputStream out, byte[] tmp, ObjectList v)
+		throws IOException {
+		final int len = v.size();
+		final Object[] o = v.rawArray();
+		for(int i = 0; i < len; i ++) {
+			writeDouble(out, tmp, (Double)o[i]);
+		}
+	}
+
+	// 列群をStringで書き込む.
+	private static final void writeStringColumns(OutputStream out, byte[] tmp, Object[] strBuf,
+		int stringHeaderLength, ObjectList v) throws IOException {
+		final int len = v.size();
+		final Object[] o = v.rawArray();
+		for(int i = 0; i < len; i ++) {
+			writeString(out, tmp, strBuf, stringHeaderLength, (String)o[i]);
+		}
+	}
+	
+	// 列群をDateで書き込む.
+	private static final void writeDateColumns(OutputStream out, byte[] tmp, ObjectList v)
+		throws IOException {
+		final int len = v.size();
+		final Object[] o = v.rawArray();
+		for(int i = 0; i < len; i ++) {
+			writeDate(out, tmp, (Date)o[i]);
+		}
+	}
+	
+	// bodyデータを出力.
+	private static final void writeBody(OutputStream out, RimParams params,
+		ObjectList[] body, ColumnType[] types, CompressType compressType)
+		throws IOException {
+		ObjectList o;
+		final byte[] tmp = params.tmp;
+		final int columnLen = types.length;
+		final RbbOutputStream rbb = params.rbb;
+		for(int i = 0; i < columnLen; i ++) {
+			o = body[i]; body[i] = null;
+			rbb.reset();
+			switch(types[i]) {
+			case Boolean:
+				writeBooleanColumns(rbb, tmp, o);
+				break;
+			case Byte:
+				writeByteColumns(rbb, tmp, o);
+				break;
+			case Short:
+				writeShortColumns(rbb, tmp, o);
+				break;
+			case Integer:
+				writeIntegerColumns(rbb, tmp, o);
+				break;
+			case Long:
+				writeLongColumns(rbb, tmp, o);
+				break;
+			case Float:
+				writeFloatColumns(rbb, tmp, o);
+				break;
+			case Double:
+				writeDoubleColumns(rbb, tmp, o);
+				break;
+			case String:
+				writeStringColumns(rbb, tmp, params.strBuf,
+					params.stringHeaderLength, o);
+				break;
+			case Date:
+				writeDateColumns(rbb, tmp, o);
+				break;
+			}
+			// RbbOutputStreamに書き込んだ情報を出力.
+			writeCompress(out, params, compressType);
+		}
 	}
 
 	// Index群を出力.
-	private static final void writeIndex(OutputStream out, byte[] tmp, int stringHeaderLength,
-		int byte1_4Len, ColumnType[] types, ObjectList<IndexColumn> indexColumns)
-		throws IOException {
+	private static final void writeIndex(OutputStream out, RimParams params, ColumnType[] types,
+		CompressType compressType, ObjectList<IndexColumn> indexColumns) throws IOException {
 		final int len = indexColumns.size();
 
 		// インデックス毎に出力.
 		for(int i = 0; i < len; i ++) {
-			writeOneIndex(out, tmp, stringHeaderLength, byte1_4Len,
-				types[indexColumns.get(i).getNo()], indexColumns.get(i));
+			writeOneIndex(out, params, types[indexColumns.get(i).getNo()], compressType,
+				indexColumns.get(i));
 		}
 	}
 
 	// １つのIndexを出力.
-	private static final int writeOneIndex(OutputStream out, byte[] tmp, int stringHeaderLength,
-		int byte1_4Len, ColumnType type, IndexColumn index)
-		throws IOException {
+	private static final int writeOneIndex(OutputStream out, RimParams params, ColumnType type,
+		CompressType compressType, IndexColumn index) throws IOException {
 
 		//
 		// ソートされたIndexでは、同一の条件が並んで管理されてる可能性がある
@@ -593,6 +827,8 @@ public class SaveRim {
 		//  {value: 203, [5, 38]}
 		//  {value: 210, [111]}
 		//
+		final byte[] tmp = params.tmp;
+		final int byte1_4Len = params.byte1_4Len;
 
 		IndexRow row, bef = null;
 		final ObjectList<IndexRow> list = index.getRows();
@@ -607,14 +843,15 @@ public class SaveRim {
 		// インデックス内容を出力.
 		int pos = 0;
 		int ret = 0;
+		final RbbOutputStream rbb = params.rbb;
+		rbb.reset();
 		for(int i = 0; i < len; i ++) {
 			row = list.get(i);
 			// 前回value条件と一致しない場合.
 			if(bef != null && !bef.getValue().equals(row.getValue())) {
 
 				// 最適化Index情報を保存.
-				ret += optimizeWriteIndex(out, tmp, stringHeaderLength, byte1_4Len,
-					type, list, pos, i);
+				ret += optimizeWriteIndex(rbb, params, type, list, pos, i);
 
 				// 現在をポジションとする.
 				pos = i;
@@ -624,18 +861,27 @@ public class SaveRim {
 		}
 		
 		// 最後の情報を書き込み.
-		ret += optimizeWriteIndex(out, tmp, stringHeaderLength, byte1_4Len,
-			type, list, pos, len);
+		ret += optimizeWriteIndex(rbb, params, type, list, pos, len);
+		
+		// rbbの内容を出力.
+		writeCompress(out, params, compressType);
+		
 		return ret;
 	}
 
 	// 最適化されたIndex書き込み.
-	private static final int optimizeWriteIndex(OutputStream out, byte[] tmp, int stringHeaderLength,
-		int byte1_4Len, ColumnType type, ObjectList<IndexRow> list, int start, int end)
+	private static final int optimizeWriteIndex(OutputStream out, RimParams params,
+		ColumnType type, ObjectList<IndexRow> list,
+		int start, int end)
 		throws IOException {
 
+		final byte[] tmp = params.tmp;
+		final Object[] strBuf = params.strBuf;
+		final int stringHeaderLength = params.stringHeaderLength;
+		final int byte1_4Len = params.byte1_4Len;
+		
 		// value情報を出力.
-		convertValue(out, tmp, stringHeaderLength, type, list.get(start).getValue());
+		convertValue(out, tmp, strBuf, stringHeaderLength, type, list.get(start).getValue());
 
 		// 連続する行数を出力.
 		out.write(len1_4Binary(tmp, byte1_4Len, end - start), 0, byte1_4Len);

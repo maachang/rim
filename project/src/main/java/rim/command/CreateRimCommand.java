@@ -1,7 +1,8 @@
 package rim.command;
 
-import rim.SaveRim;
+import rim.CompressType;
 import rim.RimConstants;
+import rim.SaveRim;
 import rim.util.Args;
 import rim.util.CsvReader;
 import rim.util.FileUtil;
@@ -43,6 +44,11 @@ public class CreateRimCommand {
 		System.out.println("  -o [--output] {ファイル名}");
 		System.out.println("     ※ この条件は必須です.");
 		System.out.println("     出力先のRim変換されるファイル名を設定します");
+		
+		System.out.println("  -p [--comp] [--compress] {圧縮タイプ}");
+		System.out.println("     圧縮タイプを設定します。設定しない場合は圧縮しません。");
+		System.out.println("      default デフォルトの軽量圧縮");
+		System.out.println("      gzip    GZIP圧縮");
 
 		System.out.println("  -i [--index] {列名} ....");
 		System.out.println("     列名を設定して、インデックス対象を設定します.");
@@ -77,8 +83,8 @@ public class CreateRimCommand {
 
 	// 処理結果のレポート表示.
 	private static final void viewReport(long time, int rowAll, String csvFile,
-		String outFileName, ObjectList<String> indexList, String charset,
-		String separation, int stringHeaderLength) throws Exception {
+		String outFileName, ObjectList<String> indexList, CompressType compressType,
+		String charset, String separation, int stringHeaderLength) throws Exception {
 		time = System.currentTimeMillis() - time;
 
 		System.out.println();
@@ -102,10 +108,11 @@ public class CreateRimCommand {
 		}
 
 		System.out.println();
-
+		
+		System.out.println("圧縮タイプ: " + compressType);
 		System.out.println("CSV文字コード: " + charset);
-		System.out.println("CSV区切り文字: " + separation);
-		System.out.println("String長管理Byte数: " + stringHeaderLength);
+		System.out.println("CSV区切り文字: [" + separation + "]");
+		System.out.println("String長管理Byte数: " + stringHeaderLength + " byte");
 
 		System.out.println();
 	}
@@ -129,6 +136,16 @@ public class CreateRimCommand {
 			help();
 			System.exit(0);
 			return;
+		}
+		
+		// 圧縮タイプを取得.
+		CompressType compressType;
+		String compress = args.get("-p", "--comp", "--compress");
+		if(compress != null) {
+			// 文字列から圧縮タイプを取得.
+			compressType = CompressType.get(compress);
+		} else {
+			compressType = CompressType.None;
 		}
 
 		// CSV文字コードを取得.
@@ -200,7 +217,7 @@ public class CreateRimCommand {
 			csv = new CsvReader(csvFile, charset, separation);
 
 			// 変換オブジェクトを作成.
-			convRim = new SaveRim(csv, outFileName, StringHeaderLength);
+			convRim = new SaveRim(csv, outFileName, compressType, StringHeaderLength);
 
 			// インデックスの設定.
 			int len = indexList.size();
@@ -216,8 +233,8 @@ public class CreateRimCommand {
 			convRim.close(); convRim = null;
 
 			// 処理結果のレポートを表示.
-			viewReport(time, rowAll, csvFile, outFileName, indexList, charset,
-				separation, StringHeaderLength);
+			viewReport(time, rowAll, csvFile, outFileName, indexList, compressType,
+				charset, separation, StringHeaderLength);
 
 			System.exit(0);
 		} finally {

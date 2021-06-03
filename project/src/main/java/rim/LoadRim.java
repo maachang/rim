@@ -5,14 +5,34 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Date;
+import java.util.zip.GZIPInputStream;
 
 import rim.exception.RimException;
+import rim.util.UTF8IO;
+import rim.util.seabass.SeabassComp;
+import rim.util.seabass.SeabassCompBuffer;
 
 /**
  * Rimファイルをロード.
  */
 public class LoadRim {
 	private LoadRim() {
+	}
+	
+	// 利用頻度の高いパラメータを１つにまとめた内容.
+	private static final class RimParams {
+		// 属性情報.
+		Object attribute;
+		// テンポラリバッファ.
+		byte[] tmp;
+		// 文字列テンポラリバッファ.
+		Object[] strBuf;
+		// 文字列の長さを保持するバイト値.
+		int stringHeaderLength;
+		// 行数に応じた行情報を保持するバイト値.
+		int byte1_4Len;
+		// データ塊を一時受け取るバッファ.
+		byte[] chunkedBuffer;
 	}
 	
 	/**
@@ -35,17 +55,38 @@ public class LoadRim {
 	public static final Rim load(InputStream in)
 		throws IOException {
 		try {
+			// よく使うパラメータをまとめたオブジェクトを作成.
+			RimParams params = new RimParams();
+			
 			// バッファ関連の情報生成.
-			final byte[] tmp = new byte[8];
-			final Object[] strBuf = new Object[] {
+			params.tmp = new byte[8];
+			params.strBuf = new Object[] {
 				new byte[64]
+				,new char[64]
 			};
+			params.chunkedBuffer = new byte[1024];
 			
 			// シンボルのチェック.
-			checkSimbol(in, tmp);
+			checkSimbol(in, params.tmp);
+			
+			// 圧縮タイプを取得(1byte).
+			readBinary(params.tmp, in, 1);
+			CompressType compressType = CompressType.get(bin1Int(params.tmp));
+			
+			// 圧縮タイプが「デフォルト圧縮」の場合.
+			if(CompressType.Default == compressType) {
+				
+				// 属性にSeabassCompのバッファを生成して設定.
+				params.attribute = new SeabassCompBuffer();
+			// 圧縮タイプが「GZIP圧縮」の場合.
+			} else if(CompressType.Gzip == compressType) {
+				
+				// 属性にRbbOutputStreamを設定.
+				params.attribute = new RbbOutputStream();
+			}
 			
 			// ヘッダ情報を取得.
-			Object[] headers = readHeader(in, tmp, strBuf);
+			Object[] headers = readHeader(in, params);
 			int columnLength = (Integer)headers[0];
 			String[] columns = (String[])headers[1];
 			ColumnType[] columnTypes = (ColumnType[])headers[2];
@@ -53,24 +94,25 @@ public class LoadRim {
 			
 			// それぞれの文字列を表現する長さを管理するヘッダバイト数を取得.
 			// (1byte).
-			readBinary(tmp, in, 1);
-			final int stringHeaderLength = bin1Int(tmp);
+			readBinary(params.tmp, in, 1);
+			params.stringHeaderLength = bin1Int(params.tmp);
 			
 			// 全行数を読み込む(4byte).
-			readBinary(tmp, in, 4);
-			final int rowAll = bin4Int(tmp);
+			readBinary(params.tmp, in, 4);
+			final int rowAll = bin4Int(params.tmp);
 			
 			// 全行数に対する長さ管理をするバイト数を取得.
-			final int byte1_4Len = RimUtil.intLengthByByte1_4Length(rowAll);
+			params.byte1_4Len = RimUtil.intLengthByByte1_4Length(rowAll);
 			
 			// 登録されているインデックス数を取得.
-			readBinary(tmp, in, 2);
-			final int indexLength = bin2Int(tmp);
+			readBinary(params.tmp, in, 2);
+			final int indexLength = bin2Int(params.tmp);
 			
 			//System.out.println(" columnLength: " + columnLength
-			//		+ " stringHeaderLength: " + stringHeaderLength
+			//		+ " stringHeaderLength: " + params.stringHeaderLength
 			//		+ " rowAll: " + rowAll
-			//		+ " byte1_4Len: " + byte1_4Len
+			//		+ " byte1_4Len: " + params.byte1_4Len
+			//		+ " compressType: " + compressType
 			//		+ " indexLength: " + indexLength
 			//);
 			
@@ -79,12 +121,12 @@ public class LoadRim {
 			columns = null;
 			
 			// Body情報を取得.
-			readBody(ret, in, tmp, strBuf, stringHeaderLength, columnTypes, columnLength,
-				rowAll);
+			readBody(ret, in, params, columnTypes, compressType,
+				columnLength, rowAll);
 			columnTypes = null;
 			
 			// 登録インデックスを取得.
-			readIndex(ret, in, tmp, strBuf, stringHeaderLength, byte1_4Len, indexLength);
+			readIndex(ret, in, params, compressType, indexLength);
 			
 			// fix.
 			ret.fix();
@@ -144,6 +186,11 @@ public class LoadRim {
 	}
 	
 	// 1byte から 4byte までの条件を取得.
+	private static final int bin1_4Int(RimParams params) {
+		return bin1_4Int(params.tmp, params.byte1_4Len);
+	}
+	
+	// 1byte から 4byte までの条件を取得.
 	private static final int bin1_4Int(byte[] tmp, int byte1_4Len) {
 		switch(byte1_4Len) {
 		case 1: return bin1Int(tmp);
@@ -164,14 +211,24 @@ public class LoadRim {
 		}
 	}
 	
-	// String読み込み用の文字列バッファを取得.
-	private static final byte[] getReadStringBuffer(Object[] strBuf, int len) {
-		byte[] b = (byte[])strBuf[0];
-		if(b.length < len) {
-			b = new byte[len];
-			strBuf[0] = b;
+	
+	// Stringオブジェクトを取得.
+	// UTF8専用.
+	private static final String convertString(InputStream in, RimParams params,
+		int strHeaderLen)
+		throws IOException {
+		readBinary(params.tmp, in, strHeaderLen);
+		final int len = bin1_4Int(params.tmp, strHeaderLen);
+		if(len == 0) {
+			return "";
 		}
-		return b;
+		// 文字列取得用バッファを取得.
+		final byte[] bin = RimUtil.getStringByteArray(params.strBuf, len);
+		readBinary(bin, in, len);
+		
+		// バイナリから文字列変換用バッファを取得.
+		final char[] chr = RimUtil.getStringCharArray(params.strBuf, len);
+		return UTF8IO.decode(chr, bin, 0, len);
 	}
 	
 	// シンボルのチェック.
@@ -189,34 +246,28 @@ public class LoadRim {
 	}
 	
 	// ヘッダ情報を取得.
-	private static final Object[] readHeader(InputStream in, byte[] tmp,
-		Object[] strBuf) throws IOException {
+	private static final Object[] readHeader(InputStream in, RimParams params)
+		throws IOException {
 		
-		int i, oLen;
-		byte[] bstr;
+		int i;
 		
 		// 列数を取得(2byte).
-		readBinary(tmp, in, 2);
-		int columnLength = bin2Int(tmp);
+		readBinary(params.tmp, in, 2);
+		int columnLength = bin2Int(params.tmp);
 				
 		// 列名を取得(len:1byte, utf8).
 		String[] columns = new String[columnLength];
 		for(i = 0; i < columnLength; i ++) {
-			// 列名の長さを取得(1byte)
-			readBinary(tmp, in, 1);
-			oLen = bin1Int(tmp);
-			// 列名を取得(UTF8).
-			bstr = getReadStringBuffer(strBuf, oLen);
-			readBinary(bstr, in, oLen);
-			columns[i] = new String(bstr, 0, oLen, "UTF8");
+			// 列名を取得(ヘッダ:1byte)
+			columns[i] = convertString(in, params, 1);
 		}
 		
 		// 列型を取得(1byte).
 		ColumnType[] columnTypes = new ColumnType[columnLength];
 		for(i = 0; i < columnLength; i ++) {
 			// 列型を取得(1byte)
-			readBinary(tmp, in, 1);
-			columnTypes[i] = ColumnType.get(bin1Int(tmp));
+			readBinary(params.tmp, in, 1);
+			columnTypes[i] = ColumnType.get(bin1Int(params.tmp));
 		}
 		// [0]: 列数, [1]: 列名, [2]: 列型.
 		return new Object[] {columnLength, columns, columnTypes};
@@ -272,16 +323,9 @@ public class LoadRim {
 	}
 	
 	// Stringオブジェクトを読み込む.
-	private static final String readString(InputStream in, byte[] tmp,
-		Object[] strBuf, int stringHeaderLength) throws IOException {
-		readBinary(tmp, in, stringHeaderLength);
-		int len = bin1_4Int(tmp, stringHeaderLength);
-		if(len == 0) {
-			return "";
-		}
-		byte[] bin = getReadStringBuffer(strBuf, len);
-		readBinary(bin, in, len);
-		return new String(bin, 0, len, "UTF8");
+	private static final String readString(InputStream in, RimParams params)
+		throws IOException {
+		return convertString(in, params, params.stringHeaderLength);
 	}
 	
 	// Dateオブジェクトを読み込む.
@@ -291,54 +335,188 @@ public class LoadRim {
 		return new Date(bin8Long(tmp));
 	}
 	
+	// 圧縮されてる場合は解凍して取得.
+	private static final byte[] readDecompress(int[] outLen, CompressType compressType,
+		RimParams params, int len) throws IOException {
+		
+		// 圧縮無しの場合.
+		if(CompressType.None == compressType) {
+			// そのまま返却.
+			outLen[0] = len;
+			return params.chunkedBuffer;
+			
+		// 圧縮タイプが「デフォルト圧縮」の場合.
+		} else if(CompressType.Default == compressType) {
+			// attributeからバッファを取得.
+			SeabassCompBuffer buf = (SeabassCompBuffer)params.attribute;
+			
+			// 解凍後のデータサイズを取得.
+			int dLen = SeabassComp.decompressLength(params.chunkedBuffer, 0, len);
+			buf.clear(dLen);
+			
+			// 解凍.
+			SeabassComp.decompress(buf, params.chunkedBuffer, 0, len);
+			
+			// 解凍内容を返却.
+			outLen[0] = dLen;
+			return buf.getRawBuffer();
+			
+		// 圧縮タイプが「GZIP圧縮」の場合.
+		} else if(CompressType.Gzip == compressType) {
+			// attributeからRbbOutputStreamを取得.
+			RbbOutputStream buf = (RbbOutputStream)params.attribute;
+			buf.reset();
+			
+			// chunkedBufferをRbInputStreamにセットしたGZIP解凍生成.
+			GZIPInputStream in = new GZIPInputStream(
+				new RbInputStream(params.chunkedBuffer, 0, len));
+			
+			final byte[] b = new byte[1024];
+			int rLen;
+			while((rLen = in.read(b)) != -1) {
+				buf.write(b, 0, rLen);
+			}
+			in.close(); in = null;
+			
+			outLen[0] = buf.getLength();
+			return buf.getBuffer();
+		// 不明な圧縮タイプ.
+		} else {
+			throw new RimException(
+				"Illegal compression type is set: " + compressType);
+		}
+	}
+	
 	// 指定型の要素を取得.
-	private static final Object getValue(InputStream in, byte[] tmp, Object[] strBuf,
-		int stringHeaderLength, ColumnType type)
-		throws IOException {
+	private static final Object getValue(InputStream in, RimParams params,
+		ColumnType type) throws IOException {
 		switch(type) {
 		case Boolean:
-			return readBoolean(in, tmp);
+			return readBoolean(in, params.tmp);
 		case Byte:
-			return readByte(in, tmp);
+			return readByte(in, params.tmp);
 		case Short:
-			return readShort(in, tmp);
+			return readShort(in, params.tmp);
 		case Integer:
-			return readInteger(in, tmp);
+			return readInteger(in, params.tmp);
 		case Long:
-			return readLong(in, tmp);
+			return readLong(in, params.tmp);
 		case Float:
-			return readFloat(in, tmp);
+			return readFloat(in, params.tmp);
 		case Double:
-			return readDouble(in, tmp);
+			return readDouble(in, params.tmp);
 		case String:
-			return readString(in, tmp, strBuf, stringHeaderLength);
+			return readString(in, params);
 		case Date:
-			return readDate(in, tmp);
+			return readDate(in, params.tmp);
+		}
+		throw new RimException("Unknown column type: " + type);
+	}
+	
+	// 指定型の要素群を連続して取得.
+	private static final void getValues(Object[] out, InputStream in, RimParams params,
+		ColumnType type)
+		throws IOException {
+		final int len = out.length;
+		switch(type) {
+		case Boolean:
+			for(int i = 0; i < len; i ++) {
+				out[i] = readBoolean(in, params.tmp);
+			}
+			return;
+		case Byte:
+			for(int i = 0; i < len; i ++) {
+				out[i] = readByte(in, params.tmp);
+			}
+			return;
+		case Short:
+			for(int i = 0; i < len; i ++) {
+				out[i] = readShort(in, params.tmp);
+			}
+			return;
+		case Integer:
+			for(int i = 0; i < len; i ++) {
+				out[i] = readInteger(in, params.tmp);
+			}
+			return;
+		case Long:
+			for(int i = 0; i < len; i ++) {
+				out[i] = readLong(in, params.tmp);
+			}
+			return;
+		case Float:
+			for(int i = 0; i < len; i ++) {
+				out[i] = readFloat(in, params.tmp);
+			}
+			return;
+		case Double:
+			for(int i = 0; i < len; i ++) {
+				out[i] = readDouble(in, params.tmp);
+			}
+			return;
+		case String:
+			for(int i = 0; i < len; i ++) {
+				out[i] = readString(in, params);
+			}
+			return;
+		case Date:
+			for(int i = 0; i < len; i ++) {
+				out[i] = readDate(in, params.tmp);
+			}
+			return;
 		}
 		throw new RimException("Unknown column type: " + type);
 	}
 
 	// bodyを取得.
-	private static final void readBody(Rim out, InputStream in, byte[] tmp, Object[] strBuf,
-		int stringHeaderLength, ColumnType[] columnTypes, int columnLength,
+	private static final void readBody(Rim out, InputStream in, RimParams params,
+		ColumnType[] columnTypes, CompressType compressType, int columnLength,
 		int rowAll) throws IOException {
-		int i, j;
-		Object[] row;
-		RimBody body = out.getBody();
-		for(i = 0; i < rowAll; i ++) {
-			row = new Object[columnLength];
-			for(j = 0; j < columnLength; j ++) {
-				row[j] = getValue(in, tmp, strBuf, stringHeaderLength, columnTypes[j]);
+		int i, len;
+		byte[] data;
+		Object[] columns;
+		RbInputStream rbIn;
+		final int[] dataLen = new int[1];
+		final RimBody body = out.getBody();
+		for(i = 0; i < columnLength; i ++) {
+			
+			// データ塊長を取得.
+			len = readInteger(in, params.tmp);
+			
+			// 塊受付バッファサイズが小さい場合.
+			if(params.chunkedBuffer.length < len) {
+				// lenに合わせて再生成.
+				params.chunkedBuffer = new byte[len];
 			}
-			body.add(row);
+			
+			// 塊データを取得.
+			readBinary(params.chunkedBuffer, in, len);
+			
+			// 圧縮されている場合、塊を解凍して取得.
+			data = readDecompress(dataLen, compressType, params, len);
+			
+			// 塊情報をRbInputStreamに置き換える.
+			rbIn = new RbInputStream(data, 0, dataLen[0]);
+			
+			// １つの列の全行情報を作成.
+			columns = new Object[rowAll];
+			
+			// 1つの列の全行情報を取得.
+			getValues(columns, rbIn, params, columnTypes[i]);
+			
+			// bodyに列の全行情報をセット.
+			body.setColumns(i, columns);
+			
+			// クリア.
+			columns = null;
+			rbIn = null;
 		}
 	}
 
 	// 登録インデックスを取得.
 	@SuppressWarnings("rawtypes")
-	private static final void readIndex(Rim out, InputStream in, byte[] tmp, Object[] strBuf,
-		int stringHeaderLength, int byte1_4Len, int indexLength)
-		throws IOException {
+	private static final void readIndex(Rim out, InputStream in, RimParams params,
+		CompressType compressType, int indexLength) throws IOException {
 		
 		int i, j, len;
 		int columnNo;
@@ -349,16 +527,21 @@ public class LoadRim {
 		ColumnType columnType;
 		int[] rowIdList = null;
 		
+		byte[] data;
+		RbInputStream rbIn;
+		final int[] dataLen = new int[1];
+
+		
 		// 全体のインデックス情報のループ.
 		for(i = 0; i < indexLength; i ++) {
 			
 			// 対象インデックスの列番号を取得.
-			readBinary(tmp, in, 2);
-			columnNo = bin2Int(tmp);
+			readBinary(params.tmp, in, 2);
+			columnNo = bin2Int(params.tmp);
 			
 			// 対象インデックスの総行数を取得.
-			readBinary(tmp, in, byte1_4Len);
-			planIndexSize = bin1_4Int(tmp, byte1_4Len);
+			readBinary(params.tmp, in, params.byte1_4Len);
+			planIndexSize = bin1_4Int(params);
 			
 			// 今回処理するインデックスを登録.
 			index = out.registerIndex(columnNo, planIndexSize);
@@ -366,15 +549,33 @@ public class LoadRim {
 			// このインデックスの列型を取得.
 			columnType = index.getColumnType();
 			
+			// データ塊長を取得.
+			len = readInteger(in, params.tmp);
+			
+			// 塊受付バッファサイズが小さい場合.
+			if(params.chunkedBuffer.length < len) {
+				// lenに合わせて再生成.
+				params.chunkedBuffer = new byte[len];
+			}
+			
+			// 塊データを取得.
+			readBinary(params.chunkedBuffer, in, len);
+			
+			// 圧縮されている場合、塊を解凍して取得.
+			data = readDecompress(dataLen, compressType, params, len);
+			
+			// 塊情報をRbInputStreamに置き換える.
+			rbIn = new RbInputStream(data, 0, dataLen[0]);
+			
 			// インデックス追加完了までループ.
 			while(true) {
 				
 				// 1つの最適化されたインデックス情報を取得.
-				value = getValue(in, tmp, strBuf, stringHeaderLength, columnType);
+				value = getValue(rbIn, params, columnType);
 				
 				// 1つの同一要素に対する行番号数を取得.
-				readBinary(tmp, in, byte1_4Len);
-				rowIdLength = bin1_4Int(tmp, byte1_4Len);
+				readBinary(params.tmp, rbIn, params.byte1_4Len);
+				rowIdLength = bin1_4Int(params);
 				
 				// RowIdList のバッファが足りない場合は生成.
 				if(rowIdList == null || rowIdList.length < rowIdLength) {
@@ -383,8 +584,8 @@ public class LoadRim {
 				
 				// RowIdListをセット.
 				for(j = 0; j < rowIdLength; j ++) {
-					readBinary(tmp, in, byte1_4Len);
-					rowIdList[j] = bin1_4Int(tmp, byte1_4Len);
+					readBinary(params.tmp, rbIn, params.byte1_4Len);
+					rowIdList[j] = bin1_4Int(params);
 				}
 				
 				// 対象のインデックスに情報を追加.

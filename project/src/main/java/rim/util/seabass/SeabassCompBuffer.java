@@ -5,7 +5,7 @@ package rim.util.seabass;
  */
 public class SeabassCompBuffer {
 	private byte[] data;
-	private int length;
+	private int limit;
 
 	/**
 	 * コンストラクタ.
@@ -23,69 +23,78 @@ public class SeabassCompBuffer {
 	}
 	
 	/**
-	 * オブジェクト再利用.
+	 * サイズを指定してバッファをクリア.
 	 *
 	 * @param length
 	 *            再利用時のバイナリ長を設定します.
+	 * @return SeabassCompBuffer このオブジェクトが返却されます.
 	 */
-	public void clear(int length) {
+	public SeabassCompBuffer clear(int length) {
 		if (data == null || data.length < length) {
 			data = new byte[length];
 		}
+		return this;
 	}
-
+	
 	/**
-	 * データ配列が足りない場合は、指定長を元に増やす.
+	 * 圧縮元のデータ数を指定してバッファをクリア.
 	 * 
-	 * @param length
-	 *            この長さのデーター長が必要な場合の設定を行います.
-	 * @return
+	 * @param length 圧縮元のデータ数を設定します.
+	 * @return SeabassCompBuffer このオブジェクトが返却されます.
 	 */
-	public SeabassCompBuffer increaseIfLarger(int length) {
-		if(data == null || data.length < length) {
-			byte[] b = new byte[length + (int)((length * 0.5d) + 32)];
-			if(data != null) {
-				System.arraycopy(data, 0, b, 0, length);
-			}
+	public SeabassCompBuffer clearByMaxCompress(int length) {
+		return clear(SeabassComp.calcMaxCompressLength(length));
+	}
+	
+	/**
+	 * 現在のバッファ長に合わせてバイナリを合わせる.
+	 * @return SeabassCompBuffer このオブジェクトが返却されます.
+	 */
+	public SeabassCompBuffer smart() {
+		if(data.length != limit) {
+			byte[] b = new byte[limit];
+			System.arraycopy(data, 0, b, 0, limit);
 			data = b;
 		}
 		return this;
 	}
 
 	/**
-	 * データ取得.
+	 * 内部で持つ生バッファを取得.
 	 *
 	 * @return
 	 */
-	public byte[] getData() {
+	public byte[] getRawBuffer() {
 		return data;
 	}
 	
 	/**
-	 * 現在のデータ分のバイナリ長を取得.
+	 * 内部で持つ生バッファ長を取得.
 	 *
 	 * @return
 	 */
-	public int getDataLength() {
+	public int getRawBufferLength() {
 		return data == null ? 0 : data.length;
 	}
 
 	/**
-	 * データ長取得.
+	 * データ終端を取得.
 	 *
 	 * @return
 	 */
-	public int getLength() {
-		return length;
+	public int getLimit() {
+		return limit;
 	}
 
 	/**
-	 * データ長設定.
+	 * データー終端を設定.
 	 *
-	 * @param length
+	 * @param length このデーターの終端を設定します.
+	 * @return SeabassCompBuffer このオブジェクトが返却されます.
 	 */
-	public void setLength(int length) {
-		this.length = length;
+	public SeabassCompBuffer setLimit(int limit) {
+		this.limit = limit;
+		return this;
 	}
 
 	/**
@@ -94,8 +103,8 @@ public class SeabassCompBuffer {
 	 * @return
 	 */
 	public byte[] toByteArray() {
-		byte[] res = new byte[length];
-		System.arraycopy(data, 0, res, 0, length);
+		byte[] res = new byte[limit];
+		System.arraycopy(data, 0, res, 0, limit);
 		return res;
 	}
 }

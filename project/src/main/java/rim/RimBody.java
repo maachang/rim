@@ -1,7 +1,10 @@
 package rim;
 
+import java.util.Arrays;
+
 import rim.exception.RimException;
 import rim.util.FixedSearchArray;
+import rim.util.ObjectList;
 import rim.util.TypesUtil;
 
 /**
@@ -11,6 +14,12 @@ public class RimBody {
 
 	// 列名群.
 	private FixedSearchArray<String> columns;
+	
+	// 列数.
+	private int columnLength;
+	
+	// 行数.
+	private int rowLength;
 
 	// 列型群.
 	private ColumnType[] columnTypes;
@@ -20,9 +29,9 @@ public class RimBody {
 
 	// 行情報.
 	private RimRow rimRow;
-
-	// 追加カウント.
-	private int addCount = 0;
+	
+	// 設定確認列群.
+	private boolean[] settingRows;
 	
 	// fixフラグ.
 	private boolean fixFlag = false;
@@ -34,36 +43,58 @@ public class RimBody {
 	 * @param rowLength 総行数を設定します.
 	 */
 	protected RimBody(String[] columns, ColumnType[] types, int rowLength) {
-		FixedSearchArray<String> h = new FixedSearchArray<String>(columns);
-		Object[] r = new Object[rowLength];
+		final FixedSearchArray<String> h = new FixedSearchArray<String>(columns);
+		final int columnLength = columns.length;
+		final boolean[] f = new boolean[columnLength];
+		final Object[] r = new Object[rowLength];
+		for(int i = 0; i < rowLength; i ++) {
+			r[i] = new Object[columnLength];
+		}
+		Arrays.fill(f, false);
 		this.columns = h;
+		this.columnLength = columnLength;
+		this.rowLength = rowLength;
 		this.columnTypes = types;
 		this.rows = r;
 		this.rimRow = new RimRow(h, types);
+		this.settingRows = f;
 		this.fixFlag = false;
 	}
-
-	/**
-	 * 行情報の追加.
-	 * @param row 行情報を設定します.
-	 */
-	protected void add(Object[] row) {
-		if(row == null) {
-			throw new RimException(
-				"The row information to be added is not set.");
-
-		} else if(row.length != columnTypes.length) {
-			throw new RimException("The number of columns (" +
-				row.length + ") in the specified row to be added " +
-				"does not match the defined number of columns (" +
-				columnTypes.length + "). ");
-
-		} else if(rows.length <= addCount) {
-			throw new RimException(
-				"Additions have been made beyond the planned line.");
-
+	
+	@SuppressWarnings("rawtypes")
+	protected void setColumns(int columnNo, ObjectList columns) {
+		if(columns == null) {
+			throw new RimException("No columns have been set.");
+		} else if(columns.size() != rows.length) {
+			throw new RimException("The number of rows (" +
+				columns.size() + ") in the setting column information does " +
+				"not match the number of defined rows: " + rows.length);
 		}
-		rows[addCount ++] = row;
+		setColumns(columnNo, columns.rawArray());
+	}
+	
+	/**
+	 * 指定列番号に対して列情報を設定.
+	 * @param columnNo 列番号を設定します.
+	 * @param columns １つの列の行群情報を設定します.
+	 */
+	protected void setColumns(int columnNo, Object[] columns) {
+		if(columnNo < 0 || columnNo >= columnLength) {
+			throw new RimException("The specified column number (" +
+				columnNo + ") is beyond the scope of the column definition: " + columnLength);
+		} else if(columns == null || columns.length == 0) {
+			throw new RimException("No columns have been set.");
+		} else if(columns.length < rowLength) {
+			throw new RimException("The number of rows (" +
+				columns.length + ") in the setting column information does " +
+				"not match the number of defined rows: " + rowLength);
+		}
+		// 列情報を追加.
+		for(int i = 0; i < rowLength; i ++) {
+			rows[columnNo] = columns[i];
+		}
+		// 設定した列に対してフラグをON.
+		settingRows[columnNo] = true;
 	}
 	
 	/**
@@ -72,9 +103,14 @@ public class RimBody {
 	protected void fix() {
 		if(fixFlag) {
 			return;
-		} else if(rows.length != addCount) {
-			throw new RimException("The expected number of lines (" +
-				rows.length + ") has not been reached (" + addCount + ").");
+		}
+		// 設定が確定されていない列情報をチェック.
+		for(int i = 0; i < columnLength; i ++) {
+			if(!settingRows[i]) {
+				throw new RimException(
+					"The column number (" + i +
+					") data is not set.");
+			}
 		}
 		fixFlag = true;
 	}
@@ -128,7 +164,7 @@ public class RimBody {
 	 */
 	public RimRow getRow(int rowId) {
 		checkFix();
-		if(rowId < 0 || rowId >= rows.length) {
+		if(rowId < 0 || rowId >= rowLength) {
 			throw new RimException("Line numbers are out of range.");
 		}
 		return rimRow.set((Object[])rows[rowId]);
@@ -164,7 +200,7 @@ public class RimBody {
 	 * @return int 列数が返却されます.
 	 */
 	public int getColumnLength() {
-		return columnTypes.length;
+		return columnLength;
 	}
 
 	/**
@@ -172,6 +208,6 @@ public class RimBody {
 	 * @return int 行数が返却されます.
 	 */
 	public int getRowLength() {
-		return rows.length;
+		return rowLength;
 	}
 }
