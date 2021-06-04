@@ -256,6 +256,7 @@ public class Lz4Compress {
 			lz4FastDecompressor_decompress.invoke(lz4FastDecompressor,
 				in, iOff, out, oOff, oLen);
 			
+			// 解凍後の長さを返却.
 			return destLen;
 		} catch(Exception e) {
 			if(e instanceof InvocationTargetException) {
