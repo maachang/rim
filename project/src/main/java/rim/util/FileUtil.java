@@ -299,7 +299,8 @@ public final class FileUtil {
 	 * @exception Exception
 	 *                例外.
 	 */
-	public static final String getFileString(String name, String charset) throws Exception {
+	public static final String getFileString(String name, String charset)
+		throws Exception {
 		int len;
 		char[] tmp = new char[1024];
 		CharArrayWriter ca = null;
@@ -307,7 +308,8 @@ public final class FileUtil {
 		String ret = null;
 		try {
 			ca = new CharArrayWriter();
-			buf = new BufferedReader(new InputStreamReader(new FileInputStream(name), charset));
+			buf = new BufferedReader(new InputStreamReader(
+				new FileInputStream(name), charset));
 			while ((len = buf.read(tmp, 0, 512)) > 0) {
 				ca.write(tmp, 0, len);
 			}
@@ -345,16 +347,22 @@ public final class FileUtil {
 	 *            ファイル名を設定します.
 	 * @param binary
 	 *            出力対象のバイナリを設定します.
+	 * @param off
+	 *            対象のオフセット値を設定します.
+	 * @param len
+	 *            対象の長さを設定します.
 	 * @exception Exception
 	 *                例外.
 	 */
-	public static final void setFile(boolean newFile, String name, byte[] binary) throws Exception {
+	public static final void setFile(boolean newFile, String name,
+		byte[] binary, int off, int len) throws Exception {
 		if (binary == null) {
 			throw new IOException("There is no binary to output.");
 		}
-		BufferedOutputStream buf = new BufferedOutputStream(new FileOutputStream(name, !newFile));
+		BufferedOutputStream buf = new BufferedOutputStream(
+			new FileOutputStream(name, !newFile));
 		try {
-			buf.write(binary);
+			buf.write(binary, off, len);
 			buf.flush();
 			buf.close();
 			buf = null;
@@ -377,20 +385,25 @@ public final class FileUtil {
 	 *            ファイル名を設定します.
 	 * @param value
 	 *            出力対象の文字列を設定します.
+	 * @param off
+	 *            対象のオフセット値を設定します.
+	 * @param len
+	 *            対象の長さを設定します.
 	 * @param charset
 	 *            対象のキャラクタセットを設定します. nullの場合は、UTF8が設定されます.
 	 * @exception Exception
 	 *                例外.
 	 */
-	public static final void setFileString(boolean newFile, String name, String value, String charset)
-			throws Exception {
+	public static final void setFileString(boolean newFile, String name, String value,
+		int off, int len, String charset) throws Exception {
 		if (value == null) {
 			throw new IOException("There is no target string information for output.");
 		}
 		BufferedWriter buf = new BufferedWriter(
-				new OutputStreamWriter(new FileOutputStream(name, !newFile), (charset == null) ? "UTF8" : charset));
+			new OutputStreamWriter(
+			new FileOutputStream(name, !newFile), (charset == null) ? "UTF8" : charset));
 		try {
-			buf.write(value, 0, value.length());
+			buf.write(value, off, len);
 			buf.flush();
 			buf.close();
 			buf = null;

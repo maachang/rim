@@ -90,4 +90,12 @@ public class RbInputStream extends InputStream {
 		checkClose();
 		return length - (offset + position);
 	}
+	
+	@Override
+	public String toString() {
+		return new StringBuilder("offset: ")
+			.append(offset).append(" length: ")
+			.append(length).append(" position: ")
+			.append(position).toString();
+	}
 }

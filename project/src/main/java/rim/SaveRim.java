@@ -8,13 +8,15 @@ import java.util.Date;
 import java.util.List;
 import java.util.zip.GZIPOutputStream;
 
+import rim.compress.CompressBuffer;
+import rim.compress.Lz4Compress;
 import rim.exception.RimException;
 import rim.util.CsvReader;
 import rim.util.CsvRow;
 import rim.util.ObjectList;
 import rim.util.UTF8IO;
-import rim.util.seabass.SeabassComp;
-import rim.util.seabass.SeabassCompBuffer;
+import rim.util.seabass.SeabassCompress;
+import rim.util.seabass.SeabassCompressBuffer;
 
 /**
  * CSVファイルから、rim(readInMemory)データーを作成.
@@ -237,12 +239,22 @@ public class SaveRim {
 			if(CompressType.Default == compressType) {
 				
 				// 属性にSeabassCompのバッファを生成して設定.
-				params.attribute = new SeabassCompBuffer();
+				params.attribute = new SeabassCompressBuffer();
 			// 圧縮タイプが「GZIP圧縮」の場合.
 			} else if(CompressType.Gzip == compressType) {
 				
 				// 属性にRbbOutputStreamを生成して設定.
 				params.attribute = new RbbOutputStream();
+			// 圧縮タイプが「LZ4圧縮」の場合.
+			} else if(CompressType.LZ4 == compressType) {
+				
+				// LZ4が利用可能かチェック.
+				if(!Lz4Compress.getInstance().isSuccessLibrary()) {
+					throw new RimException("LZ4 is not available.");
+				}
+				
+				// 属性にCompressBufferのバッファを生成して設定.
+				params.attribute = new CompressBuffer();
 			}
 
 			// CSVデーターの読み込み.
@@ -544,27 +556,29 @@ public class SaveRim {
 	private static final void writeCompress(OutputStream out, RimParams params,
 		CompressType compressType) throws IOException {
 		final RbbOutputStream rbb = params.rbb;
-		int len = rbb.getLength();
+		final int rbbLen = rbb.getLength();
 		
 		// 圧縮無しの場合.
 		if(CompressType.None == compressType) {
 			
 			// データー長を設定.
-			out.write(len4Binary(params.tmp, len), 0, 4);
+			out.write(len4Binary(params.tmp, rbbLen), 0, 4);
 			// データーを設定.
-			out.write(rbb.getBuffer(), 0, len);
+			out.write(rbb.getRawBuffer(), 0, rbbLen);
 			
 		// 圧縮タイプが「デフォルト圧縮」の場合.
 		} else if(CompressType.Default == compressType) {
 			
 			// 圧縮用バッファを取得.
-			SeabassCompBuffer buf = (SeabassCompBuffer)params.attribute;
+			final SeabassCompressBuffer buf = (SeabassCompressBuffer)params.attribute;
+			
 			// 圧縮処理を受け取るバッファ長を取得して初期化.
-			buf.clearByMaxCompress(len);
+			buf.clearByMaxCompress(rbbLen);
 			
 			// 圧縮処理.
-			SeabassComp.compress(buf, rbb.getBuffer(), 0, len);
+			SeabassCompress.compress(buf, rbb.getRawBuffer(), 0, rbbLen);
 			
+			// 圧縮サイズ.
 			final int resLen = buf.getLimit();
 			
 			// データー長を設定.
@@ -579,20 +593,51 @@ public class SaveRim {
 			RbbOutputStream wrbb = (RbbOutputStream)params.attribute;
 			wrbb.reset();
 			
+			// GZIP圧縮.
 			GZIPOutputStream gzip = new GZIPOutputStream(wrbb);
-			gzip.write(rbb.getBuffer(), 0, len);
+			gzip.write(rbb.getRawBuffer(), 0, rbbLen);
 			gzip.flush();
 			gzip.finish();
 			gzip.close();
 			gzip = null;
 			
+			// 圧縮サイズ.
 			final int resLen = wrbb.getLength();
 			
 			// データー長を設定.
 			out.write(len4Binary(params.tmp, resLen), 0, 4);
 			// データーを設定.
-			out.write(wrbb.getBuffer(), 0, resLen);
-		
+			out.write(wrbb.getRawBuffer(), 0, resLen);
+			
+		// 圧縮タイプが「LZ4圧縮」の場合.
+		} else if(CompressType.LZ4 == compressType) {
+			
+			// LZ4オブジェクトを取得.
+			final Lz4Compress lz4 = Lz4Compress.getInstance();
+			
+			// 圧縮用バッファを取得.
+			final CompressBuffer oBuf = (CompressBuffer)params.attribute;
+			
+			// 圧縮処理を受け取るバッファ長を取得して初期化.
+			final int oLen = lz4.maxCompressedLength(rbbLen);
+			oBuf.clear(oLen);
+			
+			// 圧縮処理.
+			lz4.compress(oBuf, rbb.getRawBuffer(), 0, rbb.getLength());
+			
+			// 圧縮前の元データ長を保存するバイト数を取得.
+			int headLen = lz4.writeSrcLengthToByteLength(rbb.getLength());
+			
+			// データー長を設定.
+			out.write(len4Binary(params.tmp, oBuf.getLimit() + headLen), 0, 4);
+			
+			// 元のデータサイズを設定.
+			lz4.writeSrcLength(params.tmp, 0, rbb.getLength());
+			out.write(params.tmp, 0, headLen);
+			
+			// データーを設定.
+			out.write(oBuf.getRawBuffer(), 0, oBuf.getLimit());
+			
 		// 不明な圧縮タイプ.
 		} else {
 			throw new RimException(
@@ -832,20 +877,20 @@ public class SaveRim {
 
 		IndexRow row, bef = null;
 		final ObjectList<IndexRow> list = index.getRows();
-		final int len = list.size();
+		final int oneIndexLength = list.size();
 
 		// このIndexを示す列番号を出力(2byte).
 		out.write(len2Binary(tmp, index.getNo()), 0, 2);
 
 		// このIndexの総行数を出力.
-		out.write(len1_4Binary(tmp, byte1_4Len, len), 0, byte1_4Len);
+		out.write(len1_4Binary(tmp, byte1_4Len, oneIndexLength), 0, byte1_4Len);
 
 		// インデックス内容を出力.
 		int pos = 0;
 		int ret = 0;
 		final RbbOutputStream rbb = params.rbb;
 		rbb.reset();
-		for(int i = 0; i < len; i ++) {
+		for(int i = 0; i < oneIndexLength; i ++) {
 			row = list.get(i);
 			// 前回value条件と一致しない場合.
 			if(bef != null && !bef.getValue().equals(row.getValue())) {
@@ -861,7 +906,7 @@ public class SaveRim {
 		}
 		
 		// 最後の情報を書き込み.
-		ret += optimizeWriteIndex(rbb, params, type, list, pos, len);
+		ret += optimizeWriteIndex(rbb, params, type, list, pos, oneIndexLength);
 		
 		// rbbの内容を出力.
 		writeCompress(out, params, compressType);
@@ -870,7 +915,7 @@ public class SaveRim {
 	}
 
 	// 最適化されたIndex書き込み.
-	private static final int optimizeWriteIndex(OutputStream out, RimParams params,
+	private static final int optimizeWriteIndex(RbbOutputStream rbb, RimParams params,
 		ColumnType type, ObjectList<IndexRow> list,
 		int start, int end)
 		throws IOException {
@@ -881,15 +926,16 @@ public class SaveRim {
 		final int byte1_4Len = params.byte1_4Len;
 		
 		// value情報を出力.
-		convertValue(out, tmp, strBuf, stringHeaderLength, type, list.get(start).getValue());
+		convertValue(rbb, tmp, strBuf, stringHeaderLength, type,
+			list.get(start).getValue());
 
 		// 連続する行数を出力.
-		out.write(len1_4Binary(tmp, byte1_4Len, end - start), 0, byte1_4Len);
+		rbb.write(len1_4Binary(tmp, byte1_4Len, end - start), 0, byte1_4Len);
 
 		// 連続する行ID群を出力.
 		int ret = 0;
 		for(int i = start; i < end; i ++) {
-			out.write(len1_4Binary(tmp, byte1_4Len, list.get(i).getRowId()),
+			rbb.write(len1_4Binary(tmp, byte1_4Len, list.get(i).getRowId()),
 				0, byte1_4Len);
 			ret ++;
 		}

@@ -3,14 +3,14 @@ package rim.util.seabass;
 /**
  * SeabassCompBuffer.
  */
-public class SeabassCompBuffer {
+public class SeabassCompressBuffer {
 	private byte[] data;
 	private int limit;
 
 	/**
 	 * コンストラクタ.
 	 */
-	public SeabassCompBuffer() {
+	public SeabassCompressBuffer() {
 	}
 
 	/**
@@ -18,7 +18,7 @@ public class SeabassCompBuffer {
 	 *
 	 * @param capacity
 	 */
-	public SeabassCompBuffer(int capacity) {
+	public SeabassCompressBuffer(int capacity) {
 		data = new byte[capacity];
 	}
 	
@@ -29,10 +29,11 @@ public class SeabassCompBuffer {
 	 *            再利用時のバイナリ長を設定します.
 	 * @return SeabassCompBuffer このオブジェクトが返却されます.
 	 */
-	public SeabassCompBuffer clear(int length) {
+	public SeabassCompressBuffer clear(int length) {
 		if (data == null || data.length < length) {
 			data = new byte[length];
 		}
+		limit = 0;
 		return this;
 	}
 	
@@ -42,15 +43,15 @@ public class SeabassCompBuffer {
 	 * @param length 圧縮元のデータ数を設定します.
 	 * @return SeabassCompBuffer このオブジェクトが返却されます.
 	 */
-	public SeabassCompBuffer clearByMaxCompress(int length) {
-		return clear(SeabassComp.calcMaxCompressLength(length));
+	public SeabassCompressBuffer clearByMaxCompress(int length) {
+		return clear(SeabassCompress.calcMaxCompressLength(length));
 	}
 	
 	/**
 	 * 現在のバッファ長に合わせてバイナリを合わせる.
 	 * @return SeabassCompBuffer このオブジェクトが返却されます.
 	 */
-	public SeabassCompBuffer smart() {
+	public SeabassCompressBuffer smart() {
 		if(data.length != limit) {
 			byte[] b = new byte[limit];
 			System.arraycopy(data, 0, b, 0, limit);
@@ -92,7 +93,7 @@ public class SeabassCompBuffer {
 	 * @param length このデーターの終端を設定します.
 	 * @return SeabassCompBuffer このオブジェクトが返却されます.
 	 */
-	public SeabassCompBuffer setLimit(int limit) {
+	public SeabassCompressBuffer setLimit(int limit) {
 		this.limit = limit;
 		return this;
 	}

@@ -7,10 +7,12 @@ import java.io.InputStream;
 import java.util.Date;
 import java.util.zip.GZIPInputStream;
 
+import rim.compress.CompressBuffer;
+import rim.compress.Lz4Compress;
 import rim.exception.RimException;
 import rim.util.UTF8IO;
-import rim.util.seabass.SeabassComp;
-import rim.util.seabass.SeabassCompBuffer;
+import rim.util.seabass.SeabassCompress;
+import rim.util.seabass.SeabassCompressBuffer;
 
 /**
  * Rimファイルをロード.
@@ -77,12 +79,22 @@ public class LoadRim {
 			if(CompressType.Default == compressType) {
 				
 				// 属性にSeabassCompのバッファを生成して設定.
-				params.attribute = new SeabassCompBuffer();
+				params.attribute = new SeabassCompressBuffer();
 			// 圧縮タイプが「GZIP圧縮」の場合.
 			} else if(CompressType.Gzip == compressType) {
 				
 				// 属性にRbbOutputStreamを設定.
 				params.attribute = new RbbOutputStream();
+			// 圧縮タイプが「LZ4圧縮」の場合.
+			} else if(CompressType.LZ4 == compressType) {
+				
+				// LZ4が利用可能かチェック.
+				if(!Lz4Compress.getInstance().isSuccessLibrary()) {
+					throw new RimException("LZ4 is not available.");
+				}
+				
+				// 属性にCompressBufferのバッファを生成して設定.
+				params.attribute = new CompressBuffer();
 			}
 			
 			// ヘッダ情報を取得.
@@ -206,8 +218,8 @@ public class LoadRim {
 		throws IOException {
 		final int rLen = in.read(out, 0, len);
 		if(len != rLen) {
-			System.out.println("len: " + len + " rLen: " + rLen);
-			throw new RimException("Failed to read Rim information.");
+			throw new RimException("Failed to read Rim information(" +
+				len + " / " + rLen + ")");
 		}
 	}
 	
@@ -348,14 +360,14 @@ public class LoadRim {
 		// 圧縮タイプが「デフォルト圧縮」の場合.
 		} else if(CompressType.Default == compressType) {
 			// attributeからバッファを取得.
-			SeabassCompBuffer buf = (SeabassCompBuffer)params.attribute;
+			SeabassCompressBuffer buf = (SeabassCompressBuffer)params.attribute;
 			
 			// 解凍後のデータサイズを取得.
-			int dLen = SeabassComp.decompressLength(params.chunkedBuffer, 0, len);
+			int dLen = SeabassCompress.decompressLength(params.chunkedBuffer, 0, len);
 			buf.clear(dLen);
 			
 			// 解凍.
-			SeabassComp.decompress(buf, params.chunkedBuffer, 0, len);
+			SeabassCompress.decompress(buf, params.chunkedBuffer, 0, len);
 			
 			// 解凍内容を返却.
 			outLen[0] = dLen;
@@ -379,7 +391,29 @@ public class LoadRim {
 			in.close(); in = null;
 			
 			outLen[0] = buf.getLength();
-			return buf.getBuffer();
+			return buf.getRawBuffer();
+		// 圧縮タイプが「LZ4圧縮」の場合.
+		} else if(CompressType.LZ4 == compressType) {
+			Lz4Compress lz4 = Lz4Compress.getInstance();
+			
+			// attributeからバッファを取得.
+			CompressBuffer buf = (CompressBuffer)params.attribute;
+			
+			// 塊情報の先頭情報から、解凍対象の長さを取得.
+			int[] outReadByte = new int[1];
+			final int dLen = lz4.decompressLength(
+				outReadByte, params.chunkedBuffer, 0, params.chunkedBuffer.length);
+			
+			// 解凍バッファに解凍内容をセット.
+			buf.clear(dLen);
+			buf.setLimit(dLen);
+			
+			// 解凍.
+			lz4.decompress(buf, params.chunkedBuffer, outReadByte[0]);
+			
+			// 解凍内容を返却.
+			outLen[0] = dLen;
+			return buf.getRawBuffer();
 		// 不明な圧縮タイプ.
 		} else {
 			throw new RimException(
@@ -590,6 +624,7 @@ public class LoadRim {
 				
 				// 対象のインデックスに情報を追加.
 				len = index.add((Comparable)value, rowIdList, rowIdLength);
+				
 				// 予定長の取得が行われた場合.
 				if(planIndexSize <= len) {
 					// 予定長より大きな情報取得が行われた場合は例外出力.

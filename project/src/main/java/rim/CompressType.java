@@ -12,7 +12,10 @@ public enum CompressType {
 	/** デフォルト圧縮. **/
 	,Default(1)
 	/** Gzip圧縮. **/
-	,Gzip(2);
+	,Gzip(2)
+	/** LZ4圧縮. **/
+	,LZ4(10)
+	;
 	
 	// 圧縮ID.
 	private int id;
@@ -43,6 +46,7 @@ public enum CompressType {
 		case 0: return None;
 		case 1: return Default;
 		case 2: return Gzip;
+		case 10: return LZ4;
 		}
 		throw new RimException("Unknown compression ID: " + id);
 	}
@@ -60,6 +64,8 @@ public enum CompressType {
 			return Default;
 		} else if(Alphabet.eqArray(name, "gzip", "zip") != -1) {
 			return Gzip;
+		} else if(Alphabet.eqArray(name, "lz4") != -1) {
+			return LZ4;
 		}
 		throw new RimException("Unknown compressed string: " +
 			name);

@@ -182,11 +182,21 @@ public class RbbOutputStream extends OutputStream {
 	}
 	
 	/**
+	 * 現在書き込みされている有効なデータ長を取得します.
+	 * @return int 有効なデータ長が返却されます.
+	 * @exception IOException I/O例外.
+	 */
+	public int getLength() throws IOException {
+		checkDestroy();
+		return position;
+	}
+	
+	/**
 	 * 書き込み先バッファ情報を取得.
 	 * @return byte[] バッファ情報を取得します.
 	 * @exception IOException I/O例外.
 	 */
-	public byte[] getBuffer() throws IOException {
+	public byte[] getRawBuffer() throws IOException {
 		checkDestroy();
 		return buffer;
 	}
@@ -196,8 +206,8 @@ public class RbbOutputStream extends OutputStream {
 	 * @return int 有効なデータ長が返却されます.
 	 * @exception IOException I/O例外.
 	 */
-	public int getLength() throws IOException {
+	public int getRawLength() throws IOException {
 		checkDestroy();
-		return position;
+		return buffer == null ? 0 : buffer.length;
 	}
 }

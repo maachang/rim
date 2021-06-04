@@ -14,13 +14,14 @@ import rim.util.Flag;
 @SuppressWarnings({ "unchecked", "rawtypes" })
 public class Lz4Compress {
 	// LZ4-Package.
-	private String lz4PackageName = "net.jpountz.lz4";
+	private static final String LZ4_PACKAGE = "net.jpountz.lz4";
 	
 	// 同期オブジェクト.
 	private final Object sync = new Object();
 	
 	// 初期化フラグ.
 	private final Flag initFlag = new Flag(false);
+	
 	// 初期化成功フラグ.
 	private boolean initSuccessFlag;
 	
@@ -29,8 +30,6 @@ public class Lz4Compress {
 	// net.jpountz.lz4.LZ4FastDecompressor.
 	private Object lz4FastDecompressor;
 	
-	// lz4Compressor.maxCompressedLength().
-	private Method lz4Compressor_maxCompressedLength;
 	// lz4Compressor.compress().
 	private Method lz4Compressor_compress;
 	// lz4FastDecompressor.decompress().
@@ -53,23 +52,23 @@ public class Lz4Compress {
 	// 初期化処理.
 	private final Lz4Compress init() {
 		// 既に初期化済みの場合.
-		if(initFlag.get()) {
+		if(this.initFlag.get()) {
 			return this;
 		}
 		synchronized(sync) {
 			// 別のスレッドが処理して初期化済みの場合.
-			if(initFlag.get()) {
+			if(this.initFlag.get()) {
 				return this;
 			}
 			
 			try {
 				// LZ4のクラスを取得.
 				final Class lz4Fct = Class.forName(
-					lz4PackageName + ".LZ4Factory");
+					LZ4_PACKAGE + ".LZ4Factory");
 				final Class lz4Cmp = Class.forName(
-					lz4PackageName + ".LZ4Compressor");
+					LZ4_PACKAGE + ".LZ4Compressor");
 				final Class lz4Fdc = Class.forName(
-					lz4PackageName + ".LZ4FastDecompressor");
+					LZ4_PACKAGE + ".LZ4FastDecompressor");
 				
 				// Lz4Factory Lz4Factory.fastestInstance() メソッド(static).
 				final Method fctInst = lz4Fct.getMethod("fastestInstance");
@@ -88,13 +87,6 @@ public class Lz4Compress {
 				
 				// LZ4FastDecompressorを取得.
 				this.lz4FastDecompressor = fctFdCmp.invoke(lz4Factory);
-				
-				// lz4Compressor.maxCompressedLength() メソッド.
-				// int maxCompressedLength(int length)
-				//  length: 圧縮対象のバイナリ長を設定.
-				//  戻り値(int): 圧縮時に必要なバイナリ長を取得.
-				this.lz4Compressor_maxCompressedLength =
-					lz4Cmp.getMethod("maxCompressedLength", Integer.TYPE);
 				
 				// lz4Compressor.compress() メソッド.
 				// int compress(byte[] src, int soff, int slen, byte[] dest, int dlen, int dlen)
@@ -120,12 +112,17 @@ public class Lz4Compress {
 					byte[].class, Integer.TYPE, byte[].class, Integer.TYPE, Integer.TYPE);
 				
 				// 無事読み込めた場合は初期化成功.
-				initSuccessFlag = true;
+				this.initSuccessFlag = true;
 			} catch(Throwable t) {
 				// errorの場合は初期化失敗.
-				initSuccessFlag = false;
+				this.initSuccessFlag = false;
+				// クリア.
+				this.lz4Compressor = null;
+				this.lz4FastDecompressor = null;
+				this.lz4Compressor_compress = null;
+				this.lz4FastDecompressor_decompress = null;
 			}
-			initFlag.set(true);
+			this.initFlag.set(true);
 		}
 		return this;
 	}
@@ -147,19 +144,49 @@ public class Lz4Compress {
 	}
 	
 	/**
+	 * 圧縮前の元の長さをバイナリに保存した場合のバイト数を計算します.
+	 * @param srcLength 圧縮前の元の長さを設定します.
+	 * @return int 書き込まれたバイト数が返却されます.
+	 */
+	public final int writeSrcLengthToByteLength(int srcLength) {
+		checkNoSuccess();
+		int p = 0;
+		int n = srcLength;
+		while (n > 0) {
+			n >>= 7;
+			p ++;
+		}
+		return p;
+	}
+	
+	/**
+	 * 圧縮前の元の長さをバイナリに保存.
+	 * @param out 保存先のバイナリを設定します.
+	 * @param off バイナリのオフセット値を設定します.
+	 * @param srcLength 圧縮前の元の長さを設定します.
+	 * @return int 書き込まれたバイト数が返却されます.
+	 */
+	public final int writeSrcLength(byte[] out, int off, int srcLength) {
+		checkNoSuccess();
+		int p = 0;
+		int n = srcLength;
+		while (n > 0) {
+			out[off + p++] = (n >= 128) ? (byte) (0x080 | (n & 0x07f)) : (byte) n;
+			n >>= 7;
+		}
+		return p;
+	}
+	
+	/**
 	 * 解凍された時のバッファサイズの取得.
+	 * @param outPos 読み込まれたバイト数が返却されます.
 	 * @param binary 対象のバイナリを設定します.
 	 * @param off 対象のオフセット値を設定します.
 	 * @param len 対象のデータ長を設定します.
 	 * @return int 解凍対象のバイナリサイズが返却されます.
 	 */
-	public final int decompressLength(byte[] binary, int off) {
+	public final int decompressLength(int[] outReadByte, byte[] binary, int off, int len) {
 		checkNoSuccess();
-		return decompressLength(null, binary, off, binary.length);
-	}
-	
-	// 解凍された時のバッファサイズの取得.
-	private final int decompressLength(int[] out, byte[] binary, int off, int len) {
 		int ret = 0,
 			shift = 0,
 			p= 0;
@@ -169,30 +196,60 @@ public class Lz4Compress {
 					"The binary data length is not enough for the original data " +
 					"length acquisition.");
 			}
-			ret += (binary[off+p] & 0x07f) << (shift++ * 7);
-		} while((binary[off+p++] & 0x080) == 0x080);
-		if(out != null) {
-			out[0] = p;
+			ret += (binary[off + p] & 0x07f) << (shift++ * 7);
+		} while((binary[off + p ++] & 0x080) == 0x080);
+		if(outReadByte != null) {
+			outReadByte[0] = p;
 		}
 		return ret;
 	}
-	
+
+	// 最大の入力データー数.
+	private static final int MAX_INPUT_SIZE = 0x7E000000;
+
 	/**
 	 * 元の長さを指定して、圧縮後で必要な最大バイト数を取得.
-	 * @param len 元の長さを設定します.
+	 * @param length 元の長さを設定します.
 	 * @return int 圧縮後で必要な最大バイト数が返却されます.
 	 */
-	public final int maxCompressedLength(int len) {
+	public final int maxCompressedLength(int length) {
 		checkNoSuccess();
-		try {
-			// 8byteは圧縮前のデータを確保する領域.
-			return 8 + (int)lz4Compressor_maxCompressedLength
-				.invoke(lz4Compressor, len);
-		} catch(InvocationTargetException iv) {
-			throw new CompressException(iv.getTargetException());
-		} catch(Exception e) {
-			throw new CompressException(e);
+		if (length < 0) {
+			throw new IllegalArgumentException("length must be >= 0, got " + length);
+		} else if (length >= MAX_INPUT_SIZE) {
+			throw new IllegalArgumentException("length must be < " + MAX_INPUT_SIZE);
 		}
+		return length + (length >> 8) + 16;
+	}
+	
+	/**
+	 * 圧縮処理.
+	 * @param in 元のバイナリを設定します.
+	 * @param iOff 元のオフセット値を設定します.
+	 * @param iLen 元の長さを設定します.
+	 * @return CompressBuffer 圧縮結果が返却されます.
+	 */
+	public final CompressBuffer compress(byte[] in, int iOff, int iLen) {
+		return compress(null, in, iOff, iLen);
+	}
+
+	/**
+	 * 圧縮処理.
+	 * @param out 圧縮結果を格納するCompressBufferを設定します.
+	 * @param in 元のバイナリを設定します.
+	 * @param iOff 元のオフセット値を設定します.
+	 * @param iLen 元の長さを設定します.
+	 * @return CompressBuffer 圧縮結果が返却されます.
+	 */
+	public final CompressBuffer compress(CompressBuffer out, byte[] in, int iOff, int iLen) {
+		if(out == null) {
+			out = new CompressBuffer();
+			out.clear(maxCompressedLength(iLen));
+		}
+		final int len = compress(out.getRawBuffer(), 0, out.getRawBufferLength(),
+			in, iOff, iLen);
+		out.setLimit(len);
+		return out;
 	}
 	
 	/**
@@ -203,23 +260,15 @@ public class Lz4Compress {
 	 * @param in 元のバイナリを設定します.
 	 * @param iOff 元のオフセット値を設定します.
 	 * @param iLen 元の長さを設定します.
-	 * @return 実際に圧縮されたバイナリ長を設定します.
+	 * @return int 圧縮されたバイナリ長が返却されます.
 	 */
-	public final int compress(byte[] out, int oOff, int oLen, byte[] in, int iOff, int iLen) {
+	public final int compress(byte[] out, int oOff, int oLen,
+		byte[] in, int iOff, int iLen) {
 		checkNoSuccess();
 		try {
-			
-			// 圧縮前の内容を保存.
-			int p = 0;
-			int n = iLen;
-			while (n > 0) {
-				out[oOff + p++] = (n >= 128) ? (byte) (0x080 | (n & 0x07f)) : (byte) n;
-				n >>= 7;
-			}
-			
 			// 圧縮処理.
 			return (int)lz4Compressor_compress.invoke(lz4Compressor,
-				in, iOff, iLen, out, oOff + p, oLen - p);
+				in, iOff, iLen, out, oOff, oLen);
 		} catch(Exception e) {
 			if(e instanceof InvocationTargetException) {
 				throw new CompressException(
@@ -231,33 +280,48 @@ public class Lz4Compress {
 	
 	/**
 	 * 解凍処理.
-	 * @param out 解凍内容を格納するバイナリを設定します.
-	 * @param oOff 解凍内容を格納するバイナリのオフセット値を設定します.
-	 * @param oLen 解凍内容を格納するバイナリの長さを設定します.
 	 * @param in 元のバイナリを設定します.
 	 * @param iOff 元のオフセット値を設定します.
-	 * @return 実際に解凍されたバイナリ長を設定します.
+	 * @return CompressBuffer 解凍されたCompressBufferが返却されます.
 	 */
-	public final int decompress(byte[] out, int oOff, int oLen, byte[] in, int iOff) {
+	public final CompressBuffer decompress(byte[] in, int iOff) {
+		return decompress(null, in, iOff);
+	}
+	
+	/**
+	 * 解凍処理.
+	 * @param out 解凍内容を格納するCompressBufferを設定します.
+	 *            この値は「decompressLength()メソッド」で取得した値を
+	 *            out.setLimit()に設定します.
+	 * @param in 元のバイナリを設定します.
+	 * @param iOff 元のオフセット値を設定します.
+	 * @return CompressBuffer 解凍されたCompressBufferが返却されます.
+	 */
+	public final CompressBuffer decompress(CompressBuffer out, byte[] in, int iOff) {
+		decompress(out.getRawBuffer(), 0, out.getLimit(), in, iOff);
+		return out;
+	}
+	
+	/**
+	 * 解凍処理.
+	 * @param out 解凍内容を格納するバイナリを設定します.
+	 *             この値は「decompressLength()メソッド」で取得した値より
+	 *             同じ以上のバイナリサイズを設定します.
+	 * @param oOff 解凍内容を格納するバイナリのオフセット値を設定します.
+	 * @param oLen 解凍内容を格納するバイナリの長さを設定します.
+	 *             この値は「decompressLength()メソッド」で取得した値を
+	 *             設定します.
+	 * @param in 元のバイナリを設定します.
+	 * @param iOff 元のオフセット値を設定します.
+	 */
+	public final void decompress(byte[] out, int oOff, int oLen, byte[] in, int iOff) {
 		checkNoSuccess();
 		try {
-			// 解凍後の長さを取得.
-			int[] p = new int[1];
-			int destLen = decompressLength(p, in, iOff, in.length);
-			iOff += p[0]; p = null;
-			
-			// decompressLengthで取得した長さに対して設定した解凍後の格納先が少ない場合.
-			if(destLen > oLen) {
-				throw new CompressException(
-					"The binary size of the decompression result is small (" +
-					destLen + " : " + oLen + ")");
-			}
 			// 解凍処理.
 			lz4FastDecompressor_decompress.invoke(lz4FastDecompressor,
 				in, iOff, out, oOff, oLen);
-			
-			// 解凍後の長さを返却.
-			return destLen;
+		} catch(CompressException ce) {
+			throw ce;
 		} catch(Exception e) {
 			if(e instanceof InvocationTargetException) {
 				throw new CompressException(

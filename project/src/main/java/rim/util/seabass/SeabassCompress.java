@@ -3,7 +3,7 @@ package rim.util.seabass;
 /**
  * Seabass 簡易圧縮 & 解凍.
  */
-public class SeabassComp {
+public class SeabassCompress {
 
 	/** １ブロックでの圧縮サイズ上限. **/
 	private static final int LIMIT = 64;
@@ -64,7 +64,7 @@ public class SeabassComp {
 	 *            圧縮対象のバイナリを設定します.
 	 * @return SeabassCompBuffer 圧縮されたBufferオブジェクトが返却されます.
 	 */
-	public static final SeabassCompBuffer compress(byte[] in) {
+	public static final SeabassCompressBuffer compress(byte[] in) {
 		return compress(null, in, 0, in.length, DEF_SHIFT);
 	}
 
@@ -78,7 +78,7 @@ public class SeabassComp {
 	 *            圧縮対象のバイナリを設定します.
 	 * @return SeabassCompBuffer 圧縮されたBufferオブジェクトが返却されます.
 	 */
-	public static final SeabassCompBuffer compress(SeabassCompBuffer out, byte[] in) {
+	public static final SeabassCompressBuffer compress(SeabassCompressBuffer out, byte[] in) {
 		return compress(out, in, 0, in.length, DEF_SHIFT);
 	}
 
@@ -93,7 +93,7 @@ public class SeabassComp {
 	 *            圧縮対象の長さを設定します.
 	 * @return SeabassCompBuffer 圧縮されたBufferオブジェクトが返却されます.
 	 */
-	public static final SeabassCompBuffer compress(byte[] in, int offset, int length) {
+	public static final SeabassCompressBuffer compress(byte[] in, int offset, int length) {
 		return compress(null, in, offset, length, DEF_SHIFT);
 	}
 
@@ -104,7 +104,7 @@ public class SeabassComp {
 	 *            圧縮対象のバイナリを設定します.
 	 * @return SeabassCompBuffer 圧縮されたBufferオブジェクトが返却されます.
 	 */
-	public static final SeabassCompBuffer compress(SeabassCompBuffer in) {
+	public static final SeabassCompressBuffer compress(SeabassCompressBuffer in) {
 		return compress(null, in.getRawBuffer(), 0, in.getLimit(), DEF_SHIFT);
 	}
 
@@ -118,7 +118,7 @@ public class SeabassComp {
 	 *            圧縮対象のバイナリを設定します.
 	 * @return SeabassCompBuffer 圧縮されたBufferオブジェクトが返却されます.
 	 */
-	public static final SeabassCompBuffer compress(SeabassCompBuffer out, SeabassCompBuffer in) {
+	public static final SeabassCompressBuffer compress(SeabassCompressBuffer out, SeabassCompressBuffer in) {
 		return compress(out, in.getRawBuffer(), 0, in.getLimit(), DEF_SHIFT);
 	}
 	
@@ -136,8 +136,8 @@ public class SeabassComp {
 	 *            圧縮対象の長さを設定します.
 	 * @return SeabassCompBuffer 圧縮されたBufferオブジェクトが返却されます.
 	 */
-	public static final SeabassCompBuffer compress(
-		SeabassCompBuffer out, byte[] in, int offset, int length) {
+	public static final SeabassCompressBuffer compress(
+		SeabassCompressBuffer out, byte[] in, int offset, int length) {
 		return compress(out, in, offset, length, DEF_SHIFT);
 	}
 
@@ -157,8 +157,8 @@ public class SeabassComp {
 	 *            圧縮テーブル長を増やす場合は、この値に整数を設定します.
 	 * @return SeabassCompBuffer 圧縮されたBufferオブジェクトが返却されます.
 	 */
-	public static final SeabassCompBuffer compress(
-		SeabassCompBuffer out, byte[] in, int offset, int length, int shift) {
+	public static final SeabassCompressBuffer compress(
+		SeabassCompressBuffer out, byte[] in, int offset, int length, int shift) {
 		int lenM4 = length - 4;
 		int offLenM4 = lenM4 + offset;
 		int offLen = offset + length;
@@ -173,7 +173,7 @@ public class SeabassComp {
 
 		// 圧縮バッファの調整.
 		if (out == null) {
-			out = new SeabassCompBuffer(calcMaxCompressLength(length));
+			out = new SeabassCompressBuffer(calcMaxCompressLength(length));
 		} else {
 			out.clear(calcMaxCompressLength(length));
 		}
@@ -359,7 +359,7 @@ public class SeabassComp {
 	 *            解凍対象のバイナリを設定します.
 	 * @return SeabassCompBuffer 解凍されたBufferオブジェクトが返却されます.
 	 */
-	public static final SeabassCompBuffer decompress(byte[] in) {
+	public static final SeabassCompressBuffer decompress(byte[] in) {
 		return decompress(null, in, 0, in.length);
 	}
 
@@ -373,7 +373,7 @@ public class SeabassComp {
 	 *            解凍対象のバイナリを設定します.
 	 * @return SeabassCompBuffer 解凍されたBufferオブジェクトが返却されます.
 	 */
-	public static final SeabassCompBuffer decompress(SeabassCompBuffer out, byte[] in) {
+	public static final SeabassCompressBuffer decompress(SeabassCompressBuffer out, byte[] in) {
 		return decompress(out, in, 0, in.length);
 	}
 
@@ -388,7 +388,7 @@ public class SeabassComp {
 	 *            解凍対象の長さを設定します.
 	 * @return SeabassCompBuffer 解凍されたBufferオブジェクトが返却されます.
 	 */
-	public static final SeabassCompBuffer decompress(byte[] in, int offset, int length) {
+	public static final SeabassCompressBuffer decompress(byte[] in, int offset, int length) {
 		return decompress(null, in, offset, length);
 	}
 
@@ -399,7 +399,7 @@ public class SeabassComp {
 	 *            解凍対象のバイナリを設定します.
 	 * @return SeabassCompBuffer 解凍されたBufferオブジェクトが返却されます.
 	 */
-	public static final SeabassCompBuffer decompress(SeabassCompBuffer in) {
+	public static final SeabassCompressBuffer decompress(SeabassCompressBuffer in) {
 		return decompress(in.getRawBuffer(), 0, in.getLimit());
 	}
 
@@ -413,7 +413,7 @@ public class SeabassComp {
 	 *            解凍対象のバイナリを設定します.
 	 * @return SeabassCompBuffer 解凍されたBufferオブジェクトが返却されます.
 	 */
-	public static final SeabassCompBuffer decompress(SeabassCompBuffer out, SeabassCompBuffer in) {
+	public static final SeabassCompressBuffer decompress(SeabassCompressBuffer out, SeabassCompressBuffer in) {
 		return decompress(out, in.getRawBuffer(), 0, in.getLimit());
 	}
 
@@ -431,8 +431,8 @@ public class SeabassComp {
 	 *            解凍対象の長さを設定します.
 	 * @return SeabassCompBuffer 解凍されたBufferオブジェクトが返却されます.
 	 */
-	public static final SeabassCompBuffer decompress(
-		SeabassCompBuffer out, final byte[] in, final int offset, final int length) {
+	public static final SeabassCompressBuffer decompress(
+		SeabassCompressBuffer out, final byte[] in, final int offset, final int length) {
 		int p;
 		int sourceIndex = offset;
 		int targetLength = 0;
@@ -445,7 +445,7 @@ public class SeabassComp {
 
 		// 解凍データ長をセット.
 		if (out == null) {
-			out = new SeabassCompBuffer(targetLength);
+			out = new SeabassCompressBuffer(targetLength);
 		} else {
 			out.clear(targetLength);
 		}
@@ -498,7 +498,7 @@ public class SeabassComp {
 
 		// 処理範囲を超えている場合はエラー.
 		if (targetIndex > targetLength) {
-			throw new SeabassCompException("Superfluous input data encountered on offset (index:" + targetIndex + " max:"
+			throw new SeabassCompressException("Superfluous input data encountered on offset (index:" + targetIndex + " max:"
 					+ targetLength + ")");
 		}
 		return out;

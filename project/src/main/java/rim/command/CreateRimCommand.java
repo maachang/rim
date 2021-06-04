@@ -3,6 +3,7 @@ package rim.command;
 import rim.CompressType;
 import rim.RimConstants;
 import rim.SaveRim;
+import rim.compress.Lz4Compress;
 import rim.util.Args;
 import rim.util.CsvReader;
 import rim.util.FileUtil;
@@ -35,20 +36,26 @@ public class CreateRimCommand {
 		System.out.println("     ヘルプ情報を表示.");
 
 		System.out.println("  -n [--csv] {ファイル名}");
-		System.out.println("     ※ この条件は必須です.");
+		System.out.println("      ※ この条件は必須です.");
 		System.out.println("     変換元のCSVファイル名を設定します.");
 		
 		System.out.println("  -s [--separation] {区切り文字}");
 		System.out.println("     変換元のCSVの区切り文字を設定します.");
 
 		System.out.println("  -o [--output] {ファイル名}");
-		System.out.println("     ※ この条件は必須です.");
+		System.out.println("      ※ この条件は必須です.");
 		System.out.println("     出力先のRim変換されるファイル名を設定します");
 		
 		System.out.println("  -p [--comp] [--compress] {圧縮タイプ}");
 		System.out.println("     圧縮タイプを設定します。設定しない場合は圧縮しません。");
-		System.out.println("      default デフォルトの軽量圧縮");
+		System.out.println("      default 標準圧縮");
 		System.out.println("      gzip    GZIP圧縮");
+		
+		// LZ4が利用可能な場合はヘルプ表示.
+		if(Lz4Compress.getInstance().isSuccessLibrary()) {
+			System.out.println(
+						   "      lz4     LZ4圧縮");
+		}
 
 		System.out.println("  -i [--index] {列名} ....");
 		System.out.println("     列名を設定して、インデックス対象を設定します.");
@@ -58,7 +65,7 @@ public class CreateRimCommand {
 
 		System.out.println("  -c [--charset] {文字コード}");
 		System.out.println("     CSVファイルの文字コードを設定します");
-		System.out.println("     設定しない場合Windows31Jが設定されます");
+		System.out.println("     設定しない場合\"Windows31J\"が設定されます");
 
 		System.out.println("  -l [--length] {バイト数}");
 		System.out.println("     文字列の長さを表すバイト数を設定します.");
@@ -146,6 +153,14 @@ public class CreateRimCommand {
 			compressType = CompressType.get(compress);
 		} else {
 			compressType = CompressType.None;
+		}
+		
+		// LZ4の場合、ライブラリが読み込まれ利用可能かチェック.
+		if(CompressType.LZ4 == compressType) {
+			if(!Lz4Compress.getInstance().isSuccessLibrary()) {
+				errorOut("LZ4のjarが読み込まれてないため圧縮は利用出来ません.");
+				return;
+			}
 		}
 
 		// CSV文字コードを取得.
