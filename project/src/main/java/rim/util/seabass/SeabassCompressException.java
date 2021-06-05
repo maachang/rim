@@ -1,11 +1,11 @@
 package rim.util.seabass;
 
-import rim.exception.CoreException;
+import rim.compress.CompressException;
 
 /**
- * SeabassComp例外.
+ * SeabassCompress例外.
  */
-public class SeabassCompressException extends CoreException {
+public class SeabassCompressException extends CompressException {
 	private static final long serialVersionUID = -6021604387945191923L;
 
 	public SeabassCompressException() {

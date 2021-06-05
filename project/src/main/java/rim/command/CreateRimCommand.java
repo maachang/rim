@@ -1,9 +1,10 @@
 package rim.command;
 
-import rim.CompressType;
 import rim.RimConstants;
 import rim.SaveRim;
+import rim.compress.CompressType;
 import rim.compress.Lz4Compress;
+import rim.compress.ZstdCompress;
 import rim.util.Args;
 import rim.util.CsvReader;
 import rim.util.FileUtil;
@@ -13,6 +14,7 @@ import rim.util.ObjectList;
  * 指定したCSVからRimファイルを作成します.
  */
 public class CreateRimCommand {
+	
 	public static final void main(String[] args) throws Exception {
 		CreateRimCommand cmd = new CreateRimCommand();
 		cmd.execute(args);
@@ -48,13 +50,22 @@ public class CreateRimCommand {
 		
 		System.out.println("  -p [--comp] [--compress] {圧縮タイプ}");
 		System.out.println("     圧縮タイプを設定します。設定しない場合は圧縮しません。");
-		System.out.println("      default 標準圧縮");
-		System.out.println("      gzip    GZIP圧縮");
+		System.out.println("       default  標準圧縮");
+		System.out.println("       gzip     GZIP圧縮");
 		
 		// LZ4が利用可能な場合はヘルプ表示.
 		if(Lz4Compress.getInstance().isSuccessLibrary()) {
 			System.out.println(
-						   "      lz4     LZ4圧縮");
+						   "       lz4      LZ4圧縮");
+		}
+		// Zstdが利用可能な場合はヘルプ表示.
+		if(ZstdCompress.getInstance().isSuccessLibrary()) {
+			System.out.println(
+						   "       zstd{no} Zstandard圧縮");
+			System.out.println(
+						   "                noは圧縮レベルで(1-22)まで設定可能です。");
+			System.out.println(
+						   "                設定しない場合は 3 が指定されます.");
 		}
 
 		System.out.println("  -i [--index] {列名} ....");
@@ -65,11 +76,12 @@ public class CreateRimCommand {
 
 		System.out.println("  -c [--charset] {文字コード}");
 		System.out.println("     CSVファイルの文字コードを設定します");
-		System.out.println("     設定しない場合\"Windows31J\"が設定されます");
+		System.out.println("     設定しない場合は \"" +
+			RimConstants.DEFAULT_CSV_CHARSET + "\" が設定されます");
 
 		System.out.println("  -l [--length] {バイト数}");
 		System.out.println("     文字列の長さを表すバイト数を設定します.");
-		System.out.println("     このバイト数は１～４バイトの範囲で設定します.");
+		System.out.println("     このバイト数は 1～4 バイトの範囲で設定します.");
 		System.out.println("     設定しない場合は " +
 			RimConstants.DEFAULT_STRING_HEADER_LENGTH +
 			" が設定されます.");
@@ -91,7 +103,8 @@ public class CreateRimCommand {
 	// 処理結果のレポート表示.
 	private static final void viewReport(long time, int rowAll, String csvFile,
 		String outFileName, ObjectList<String> indexList, CompressType compressType,
-		String charset, String separation, int stringHeaderLength) throws Exception {
+		String charset, String separation, int stringHeaderLength, Object option)
+		throws Exception {
 		time = System.currentTimeMillis() - time;
 
 		System.out.println();
@@ -117,6 +130,9 @@ public class CreateRimCommand {
 		System.out.println();
 		
 		System.out.println("圧縮タイプ: " + compressType);
+		if(CompressType.Zstd == compressType) {
+			System.out.println("  圧縮レベル: " + option);
+		}
 		System.out.println("CSV文字コード: " + charset);
 		System.out.println("CSV区切り文字: [" + separation + "]");
 		System.out.println("String長管理Byte数: " + stringHeaderLength + " byte");
@@ -155,11 +171,25 @@ public class CreateRimCommand {
 			compressType = CompressType.None;
 		}
 		
+		// オプション.
+		Object option = null;
+		
 		// LZ4の場合、ライブラリが読み込まれ利用可能かチェック.
 		if(CompressType.LZ4 == compressType) {
 			if(!Lz4Compress.getInstance().isSuccessLibrary()) {
 				errorOut("LZ4のjarが読み込まれてないため圧縮は利用出来ません.");
 				return;
+			}
+		// Zstdの場合、ライブラリが読み込まれ利用可能かチェック.
+		} else if(CompressType.Zstd ==compressType) {
+			if(!ZstdCompress.getInstance().isSuccessLibrary()) {
+				errorOut("Zstdのjarが読み込まれてないため圧縮は利用出来ません.");
+				return;
+			}
+			// zstdの文字指定から圧縮レベルを取得.
+			int level = CompressType.getZstdLevel(compress);
+			if(level > 0) {
+				option = level;
 			}
 		}
 
@@ -232,7 +262,8 @@ public class CreateRimCommand {
 			csv = new CsvReader(csvFile, charset, separation);
 
 			// 変換オブジェクトを作成.
-			convRim = new SaveRim(csv, outFileName, compressType, StringHeaderLength);
+			convRim = new SaveRim(csv, outFileName, compressType,
+				StringHeaderLength, option);
 
 			// インデックスの設定.
 			int len = indexList.size();
@@ -248,8 +279,9 @@ public class CreateRimCommand {
 			convRim.close(); convRim = null;
 
 			// 処理結果のレポートを表示.
-			viewReport(time, rowAll, csvFile, outFileName, indexList, compressType,
-				charset, separation, StringHeaderLength);
+			viewReport(time, rowAll, csvFile, outFileName, indexList,
+				compressType, charset, separation, StringHeaderLength,
+				option);
 
 			System.exit(0);
 		} finally {

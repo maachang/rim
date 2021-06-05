@@ -9,7 +9,9 @@ import java.util.List;
 import java.util.zip.GZIPOutputStream;
 
 import rim.compress.CompressBuffer;
+import rim.compress.CompressType;
 import rim.compress.Lz4Compress;
+import rim.compress.ZstdCompress;
 import rim.exception.RimException;
 import rim.util.CsvReader;
 import rim.util.CsvRow;
@@ -85,6 +87,8 @@ public class SaveRim {
 		int stringHeaderLength;
 		// 行数に応じた行情報を保持するバイト値.
 		int byte1_4Len;
+		// オプション情報.
+		Object option;
 		// 再利用可能なBinaryのOutputStream.
 		RbbOutputStream rbb;
 	}
@@ -97,6 +101,8 @@ public class SaveRim {
 	private CompressType compressType;
 	// 文字の型に対する長さを出力するバイナリ長(1byteから4byte).
 	private int stringHeaderLength;
+	// オプション情報.
+	private Object option;
 	// CSV列毎の変換型群.
 	private ColumnType[] indexTypes;
 	// インデックス列情報群.
@@ -110,9 +116,9 @@ public class SaveRim {
 	 */
 	public SaveRim(CsvReader csv, String outFileName) {
 		this(csv, outFileName, CompressType.None,
-			RimConstants.DEFAULT_STRING_HEADER_LENGTH);
+			RimConstants.DEFAULT_STRING_HEADER_LENGTH, null);
 	}
-
+	
 	/**
 	 * コンストラクタ.
 	 * @param csv 読み込み対象のCSVを設定します.
@@ -121,7 +127,7 @@ public class SaveRim {
 	 */
 	public SaveRim(CsvReader csv, String outFileName, CompressType compressType) {
 		this(csv, outFileName, compressType,
-			RimConstants.DEFAULT_STRING_HEADER_LENGTH);
+			RimConstants.DEFAULT_STRING_HEADER_LENGTH, null);
 	}
 
 	/**
@@ -130,9 +136,10 @@ public class SaveRim {
 	 * @param outFileName 出力先ファイル名を設定します.
 	 * @param compressType 圧縮タイプを設定します.
 	 * @param stringHeaderLength 文字列の長さを管理するバイト数を設定します.
+	 * @param option オプション情報を設定します.
 	 */
 	public SaveRim(CsvReader csv, String outFileName, CompressType compressType,
-		int stringHeaderLength) {
+		int stringHeaderLength, Object option) {
 		if(compressType == null) {
 			compressType = CompressType.None;
 		}
@@ -145,6 +152,7 @@ public class SaveRim {
 		this.outFileName = outFileName;
 		this.compressType = compressType;
 		this.stringHeaderLength = stringHeaderLength;
+		this.option = option;
 	}
 
 	/**
@@ -225,6 +233,9 @@ public class SaveRim {
 			// よく使うパラメータをまとめたオブジェクトを作成.
 			final RimParams params = new RimParams();
 			
+			// オプションを設定.
+			params.option = this.option;
+			
 			// stringHeaderLengthをRimParamsにセット.
 			params.stringHeaderLength = stringHeaderLength;
 
@@ -251,6 +262,16 @@ public class SaveRim {
 				// LZ4が利用可能かチェック.
 				if(!Lz4Compress.getInstance().isSuccessLibrary()) {
 					throw new RimException("LZ4 is not available.");
+				}
+				
+				// 属性にCompressBufferのバッファを生成して設定.
+				params.attribute = new CompressBuffer();
+			// 圧縮タイプが「Zstd圧縮」の場合.
+			} else if(CompressType.Zstd == compressType) {
+				
+				// Zstdが利用可能かチェック.
+				if(!ZstdCompress.getInstance().isSuccessLibrary()) {
+					throw new RimException("Zstd is not available.");
 				}
 				
 				// 属性にCompressBufferのバッファを生成して設定.
@@ -552,22 +573,34 @@ public class SaveRim {
 		out.write(tmp, 0, 8);
 	}
 	
+	// 未圧縮の内容を書き込む.
+	private static final void writeNoCompress(OutputStream out, RimParams params)
+		throws IOException {
+		final RbbOutputStream rbb = params.rbb;
+		final int rbbLen = rbb.getLength();
+		
+		// 圧縮フラグOFF.
+		writeBoolean(out, params.tmp, false);
+		// データー長を設定.
+		out.write(len4Binary(params.tmp, rbbLen), 0, 4);
+		// データーを設定.
+		out.write(rbb.getRawBuffer(), 0, rbbLen);
+	}
+	
 	// 圧縮条件が存在する場合は圧縮して書き込む.
 	private static final void writeCompress(OutputStream out, RimParams params,
 		CompressType compressType) throws IOException {
-		final RbbOutputStream rbb = params.rbb;
-		final int rbbLen = rbb.getLength();
 		
 		// 圧縮無しの場合.
 		if(CompressType.None == compressType) {
 			
-			// データー長を設定.
-			out.write(len4Binary(params.tmp, rbbLen), 0, 4);
-			// データーを設定.
-			out.write(rbb.getRawBuffer(), 0, rbbLen);
+			// 未圧縮の内容を書き込む.
+			writeNoCompress(out, params);
 			
 		// 圧縮タイプが「デフォルト圧縮」の場合.
 		} else if(CompressType.Default == compressType) {
+			final RbbOutputStream rbb = params.rbb;
+			final int rbbLen = rbb.getLength();
 			
 			// 圧縮用バッファを取得.
 			final SeabassCompressBuffer buf = (SeabassCompressBuffer)params.attribute;
@@ -581,13 +614,27 @@ public class SaveRim {
 			// 圧縮サイズ.
 			final int resLen = buf.getLimit();
 			
-			// データー長を設定.
-			out.write(len4Binary(params.tmp, resLen), 0, 4);
-			// データーを設定.
-			out.write(buf.getRawBuffer(), 0, resLen);
+			// 元サイズより圧縮サイズの方が大きい場合.
+			if(resLen > rbbLen) {
+				
+				// 未圧縮の内容を書き込む.
+				writeNoCompress(out, params);
+				
+			// 圧縮サイズの方が小さい場合.
+			} else {
+				
+				// 圧縮フラグON.
+				writeBoolean(out, params.tmp, true);
+				// データー長を設定.
+				out.write(len4Binary(params.tmp, resLen), 0, 4);
+				// データーを設定.
+				out.write(buf.getRawBuffer(), 0, resLen);
+			}
 			
 		// 圧縮タイプが「GZIP圧縮」の場合.
 		} else if(CompressType.Gzip == compressType) {
+			final RbbOutputStream rbb = params.rbb;
+			final int rbbLen = rbb.getLength();
 			
 			// 圧縮用バッファを取得.
 			RbbOutputStream wrbb = (RbbOutputStream)params.attribute;
@@ -604,13 +651,27 @@ public class SaveRim {
 			// 圧縮サイズ.
 			final int resLen = wrbb.getLength();
 			
-			// データー長を設定.
-			out.write(len4Binary(params.tmp, resLen), 0, 4);
-			// データーを設定.
-			out.write(wrbb.getRawBuffer(), 0, resLen);
+			// 元サイズより圧縮サイズの方が大きい場合.
+			if(resLen > rbbLen) {
+				
+				// 未圧縮の内容を書き込む.
+				writeNoCompress(out, params);
+				
+			// 圧縮サイズの方が小さい場合.
+			} else {
+				
+				// 圧縮フラグON.
+				writeBoolean(out, params.tmp, true);
+				// データー長を設定.
+				out.write(len4Binary(params.tmp, resLen), 0, 4);
+				// データーを設定.
+				out.write(wrbb.getRawBuffer(), 0, resLen);
+			}
 			
 		// 圧縮タイプが「LZ4圧縮」の場合.
 		} else if(CompressType.LZ4 == compressType) {
+			final RbbOutputStream rbb = params.rbb;
+			final int rbbLen = rbb.getLength();
 			
 			// LZ4オブジェクトを取得.
 			final Lz4Compress lz4 = Lz4Compress.getInstance();
@@ -625,18 +686,70 @@ public class SaveRim {
 			// 圧縮処理.
 			lz4.compress(oBuf, rbb.getRawBuffer(), 0, rbb.getLength());
 			
-			// 圧縮前の元データ長を保存するバイト数を取得.
-			int headLen = lz4.writeSrcLengthToByteLength(rbb.getLength());
+			// 圧縮サイズを取得.
+			final int resLen = oBuf.getLimit();
 			
-			// データー長を設定.
-			out.write(len4Binary(params.tmp, oBuf.getLimit() + headLen), 0, 4);
+			// 元サイズより圧縮サイズの方が大きい場合.
+			if(resLen > rbbLen) {
+				
+				// 未圧縮の内容を書き込む.
+				writeNoCompress(out, params);
+				
+			// 圧縮サイズの方が小さい場合.
+			} else {
+				
+				// 圧縮フラグON.
+				writeBoolean(out, params.tmp, true);
+				
+				// 圧縮前の元データ長を保存するバイト数を取得.
+				int headLen = lz4.writeSrcLengthToByteLength(rbb.getLength());
+				
+				// データー長を設定.
+				out.write(len4Binary(params.tmp, resLen + headLen), 0, 4);
+				
+				// 元のデータサイズを設定.
+				lz4.writeSrcLength(params.tmp, 0, rbb.getLength());
+				out.write(params.tmp, 0, headLen);
+				
+				// データーを設定.
+				out.write(oBuf.getRawBuffer(), 0, resLen);
+			}
+		// 圧縮タイプが「Zstd圧縮」の場合.
+		} else if(CompressType.Zstd == compressType) {
+			final RbbOutputStream rbb = params.rbb;
+			final int rbbLen = rbb.getLength();
 			
-			// 元のデータサイズを設定.
-			lz4.writeSrcLength(params.tmp, 0, rbb.getLength());
-			out.write(params.tmp, 0, headLen);
+			// optionから圧縮レベルを取得.
+			int level = params.option instanceof Number ?
+				((Number)params.option).intValue() :
+				ZstdCompress.DEFAULT_LEVEL;
 			
-			// データーを設定.
-			out.write(oBuf.getRawBuffer(), 0, oBuf.getLimit());
+			// Zstdオブジェクトを取得.
+			final ZstdCompress zstd = ZstdCompress.getInstance();
+			
+			// 圧縮用バッファを取得.
+			final CompressBuffer oBuf = (CompressBuffer)params.attribute;
+			
+			// 圧縮処理.
+			zstd.compress(oBuf, rbb.getRawBuffer(), 0, rbbLen, level);
+			
+			// 元サイズより圧縮サイズの方が大きい場合.
+			if(oBuf.getLimit() > rbbLen) {
+				
+				// 未圧縮の内容を書き込む.
+				writeNoCompress(out, params);
+				
+			// 圧縮サイズの方が小さい場合.
+			} else {
+				
+				// 圧縮フラグON.
+				writeBoolean(out, params.tmp, true);
+				// データー長を設定.
+				out.write(len4Binary(params.tmp, oBuf.getLimit()), 0, 4);
+				// データーを設定.
+				out.write(oBuf.getRawBuffer(), 0, oBuf.getLimit());
+			}
+
 			
 		// 不明な圧縮タイプ.
 		} else {

@@ -34,7 +34,8 @@ public class RimConstants {
 	/**
 	 * CSVファイル読み込みデフォルト文字コード.
 	 */
-	public static final String DEFAULT_CSV_CHARSET = "Windows-31J";
+	//public static final String DEFAULT_CSV_CHARSET = "Windows-31J";
+	public static final String DEFAULT_CSV_CHARSET = "UTF8";
 
 	/**
 	 * CSVファイル区切り文字.

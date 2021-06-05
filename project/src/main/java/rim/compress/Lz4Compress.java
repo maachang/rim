@@ -12,7 +12,7 @@ import rim.util.Flag;
  * Reflectionですべて処理を行う.
  */
 @SuppressWarnings({ "unchecked", "rawtypes" })
-public class Lz4Compress {
+public final class Lz4Compress {
 	// LZ4-Package.
 	private static final String LZ4_PACKAGE = "net.jpountz.lz4";
 	
@@ -43,7 +43,7 @@ public class Lz4Compress {
 	
 	/**
 	 * オブジェクトを取得.
-	 * @return Lz4Compress() オブジェクトが返却されます.
+	 * @return Lz4Compress オブジェクトが返却されます.
 	 */
 	public static final Lz4Compress getInstance() {
 		return INST.init();
@@ -149,7 +149,6 @@ public class Lz4Compress {
 	 * @return int 書き込まれたバイト数が返却されます.
 	 */
 	public final int writeSrcLengthToByteLength(int srcLength) {
-		checkNoSuccess();
 		int p = 0;
 		int n = srcLength;
 		while (n > 0) {
@@ -167,7 +166,6 @@ public class Lz4Compress {
 	 * @return int 書き込まれたバイト数が返却されます.
 	 */
 	public final int writeSrcLength(byte[] out, int off, int srcLength) {
-		checkNoSuccess();
 		int p = 0;
 		int n = srcLength;
 		while (n > 0) {
@@ -186,7 +184,6 @@ public class Lz4Compress {
 	 * @return int 解凍対象のバイナリサイズが返却されます.
 	 */
 	public final int decompressLength(int[] outReadByte, byte[] binary, int off, int len) {
-		checkNoSuccess();
 		int ret = 0,
 			shift = 0,
 			p= 0;

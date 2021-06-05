@@ -27,7 +27,7 @@ public class SeabassCompress {
 	 *            圧縮対象のメモリサイズを設定します.
 	 * @return 圧縮バッファでの最大サイズが返却されます.
 	 */
-	public static final int calcMaxCompressLength(int len) {
+	public static final int maxCompressLength(int len) {
 		return 32 + len + (len / 6);
 	}
 
@@ -173,10 +173,9 @@ public class SeabassCompress {
 
 		// 圧縮バッファの調整.
 		if (out == null) {
-			out = new SeabassCompressBuffer(calcMaxCompressLength(length));
-		} else {
-			out.clear(calcMaxCompressLength(length));
+			out = new SeabassCompressBuffer();
 		}
+		out.clear(maxCompressLength(length));
 		byte[] target = out.getRawBuffer();
 		int targetIndex = 0;
 

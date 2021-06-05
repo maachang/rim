@@ -8,7 +8,9 @@ import java.util.Date;
 import java.util.zip.GZIPInputStream;
 
 import rim.compress.CompressBuffer;
+import rim.compress.CompressType;
 import rim.compress.Lz4Compress;
+import rim.compress.ZstdCompress;
 import rim.exception.RimException;
 import rim.util.UTF8IO;
 import rim.util.seabass.SeabassCompress;
@@ -91,6 +93,16 @@ public class LoadRim {
 				// LZ4が利用可能かチェック.
 				if(!Lz4Compress.getInstance().isSuccessLibrary()) {
 					throw new RimException("LZ4 is not available.");
+				}
+				
+				// 属性にCompressBufferのバッファを生成して設定.
+				params.attribute = new CompressBuffer();
+			// 圧縮タイプが「Zstd圧縮」の場合.
+			} else if(CompressType.Zstd == compressType) {
+				
+				// Zstdが利用可能かチェック.
+				if(!ZstdCompress.getInstance().isSuccessLibrary()) {
+					throw new RimException("Zstd is not available.");
 				}
 				
 				// 属性にCompressBufferのバッファを生成して設定.
@@ -349,10 +361,11 @@ public class LoadRim {
 	
 	// 圧縮されてる場合は解凍して取得.
 	private static final byte[] readDecompress(int[] outLen, CompressType compressType,
-		RimParams params, int len) throws IOException {
+		RimParams params, boolean noCompressFlag, int len) throws IOException {
 		
 		// 圧縮無しの場合.
-		if(CompressType.None == compressType) {
+		// 圧縮フラグがOFFの場合.
+		if(!noCompressFlag || CompressType.None == compressType) {
 			// そのまま返却.
 			outLen[0] = len;
 			return params.chunkedBuffer;
@@ -402,7 +415,7 @@ public class LoadRim {
 			// 塊情報の先頭情報から、解凍対象の長さを取得.
 			int[] outReadByte = new int[1];
 			final int dLen = lz4.decompressLength(
-				outReadByte, params.chunkedBuffer, 0, params.chunkedBuffer.length);
+				outReadByte, params.chunkedBuffer, 0, len);
 			
 			// 解凍バッファに解凍内容をセット.
 			buf.clear(dLen);
@@ -414,6 +427,21 @@ public class LoadRim {
 			// 解凍内容を返却.
 			outLen[0] = dLen;
 			return buf.getRawBuffer();
+			
+		// 圧縮タイプが「Zstd圧縮」の場合.
+		} else if(CompressType.Zstd == compressType) {
+			ZstdCompress zstd = ZstdCompress.getInstance();
+			
+			// attributeからバッファを取得.
+			CompressBuffer buf = (CompressBuffer)params.attribute;
+			
+			// 解凍.
+			zstd.decompress(buf, params.chunkedBuffer, 0, len);
+		
+			// 解凍内容を返却.
+			outLen[0] = buf.getLimit();
+			return buf.getRawBuffer();
+			
 		// 不明な圧縮タイプ.
 		} else {
 			throw new RimException(
@@ -514,6 +542,9 @@ public class LoadRim {
 		final RimBody body = out.getBody();
 		for(i = 0; i < columnLength; i ++) {
 			
+			// 圧縮フラグを取得.
+			boolean compFlag = readBoolean(in, params.tmp);
+			
 			// データ塊長を取得.
 			len = readInteger(in, params.tmp);
 			
@@ -527,7 +558,7 @@ public class LoadRim {
 			readBinary(params.chunkedBuffer, in, len);
 			
 			// 圧縮されている場合、塊を解凍して取得.
-			data = readDecompress(dataLen, compressType, params, len);
+			data = readDecompress(dataLen, compressType, params, compFlag, len);
 			
 			// 塊情報をRbInputStreamに置き換える.
 			rbIn = new RbInputStream(data, 0, dataLen[0]);
@@ -583,6 +614,9 @@ public class LoadRim {
 			// このインデックスの列型を取得.
 			columnType = index.getColumnType();
 			
+			// 圧縮フラグを取得.
+			boolean compFlag = readBoolean(in, params.tmp);
+			
 			// データ塊長を取得.
 			len = readInteger(in, params.tmp);
 			
@@ -596,7 +630,7 @@ public class LoadRim {
 			readBinary(params.chunkedBuffer, in, len);
 			
 			// 圧縮されている場合、塊を解凍して取得.
-			data = readDecompress(dataLen, compressType, params, len);
+			data = readDecompress(dataLen, compressType, params, compFlag, len);
 			
 			// 塊情報をRbInputStreamに置き換える.
 			rbIn = new RbInputStream(data, 0, dataLen[0]);

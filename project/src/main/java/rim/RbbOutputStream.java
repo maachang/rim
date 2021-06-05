@@ -143,16 +143,18 @@ public class RbbOutputStream extends OutputStream {
 		// 現在書き込みデータが存在する場合は、現状バイナリ長が
 		// 大きすぎる場合は縮小する.
 		if(position > 0) {
-			// これまでの書き込み平均長を取得.
+			// 書き込み条件と回数を登録.
 			resetCount ++;
 			allLength += position;
+			
+			// 平均値を取得.
 			final int avgLength = (int)(allLength / resetCount);
 			
 			// 今回のバイナリ長を取得.
 			final int bufLen = buffer.length;
 			
-			// 平均長とバイナリ長を比較してバイナリ長が平均値より2倍大きい場合.
-			if(bufLen > avgLength && bufLen > avgLength * 2) {
+			// 平均長とバイナリ長を比較してバイナリ長が平均値より2.5倍大きい場合.
+			if(bufLen > avgLength && bufLen > avgLength * 2.5) {
 				// バイナリサイズを平均値にして再作成する.
 				byte[] b = new byte[avgLength];
 				buffer = b;
