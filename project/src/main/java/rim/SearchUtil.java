@@ -199,43 +199,21 @@ public final class SearchUtil {
 		} else {
 			Comparable src;
 			if(ascFlag) {
-				// 不一致条件を取得.
-				if(notEq) {
-					for(int i = startPos; i < len; i ++) {
-						row = (Object[])rows[i];
-						src = (Comparable)row[columnNo];
-						if(src != null && ((Comparable)src).compareTo(value) != 0) {
-							return i;
-						}
-					}
-				// 一致条件を取得.
-				} else {
-					for(int i = startPos; i < len; i ++) {
-						row = (Object[])rows[i];
-						src = (Comparable)row[columnNo];
-						if(src != null && ((Comparable)src).compareTo(value) == 0) {
-							return i;
-						}
+				for(int i = startPos; i < len; i ++) {
+					row = (Object[])rows[i];
+					src = (Comparable)row[columnNo];
+					if(src != null &&
+						(src.compareTo(value) == 0) != notEq) {
+						return i;
 					}
 				}
 			} else {
-				// 不一致条件を取得.
-				if(notEq) {
-					for(int i = startPos; i < len; i ++) {
-						row = (Object[])rows[i];
-						src = (Comparable)row[columnNo];
-						if(src != null && ((Comparable)src).compareTo(value) != 0) {
-							return i;
-						}
-					}
-				// 一致条件を取得.
-				} else {
-					for(int i = startPos; i >= 0; i --) {
-						row = (Object[])rows[i];
-						src = (Comparable)row[columnNo];
-						if(src != null && ((Comparable)src).compareTo(value) == 0) {
-							return i;
-						}
+				for(int i = startPos; i >= 0; i --) {
+					row = (Object[])rows[i];
+					src = (Comparable)row[columnNo];
+					if(src != null &&
+						(src.compareTo(value) == 0) != notEq) {
+						return i;
 					}
 				}
 			}
@@ -250,13 +228,14 @@ public final class SearchUtil {
 	 * @param rows 列行情報を設定します.
 	 * @param columnNo 対象の列番号を設定します.
 	 * @param ascFlag 昇順で検索する場合はtrueを設定します.
+	 * @param notEq 不一致条件で検索する場合は true を設定します.
 	 * @param startPos 検索開始位置を設定します.
 	 * @param value 検索する検索条件を設定します.
 	 * @return int -1の場合、情報は見つかりませんでした.
 	 */
 	public static final int normalGT(
 		final Object[] rows, final int columnNo, final boolean ascFlag,
-		final int startPos, final Comparable value) {
+		final boolean notEq, final int startPos, final Comparable value) {
 		Object[] row;
 		final int len = rows.length;
 		if(value == null) {
@@ -267,7 +246,8 @@ public final class SearchUtil {
 				for(int i = startPos; i < len; i ++) {
 					row = (Object[])rows[i];
 					src = (Comparable)row[columnNo];
-					if(src != null && ((Comparable)src).compareTo(value) > 0) {
+					if(src != null &&
+						(src.compareTo(value) > 0) != notEq) {
 						return i;
 					}
 				}
@@ -275,7 +255,8 @@ public final class SearchUtil {
 				for(int i = startPos; i >= 0; i --) {
 					row = (Object[])rows[i];
 					src = (Comparable)row[columnNo];
-					if(src != null && ((Comparable)src).compareTo(value) > 0) {
+					if(src != null &&
+						(src.compareTo(value) > 0) != notEq) {
 						return i;
 					}
 				}
@@ -291,13 +272,14 @@ public final class SearchUtil {
 	 * @param rows 列行情報を設定します.
 	 * @param columnNo 対象の列番号を設定します.
 	 * @param ascFlag 昇順で検索する場合はtrueを設定します.
+	 * @param notEq 不一致条件で検索する場合は true を設定します.
 	 * @param startPos 検索開始位置を設定します.
 	 * @param value 検索する検索条件を設定します.
 	 * @return int -1の場合、情報は見つかりませんでした.
 	 */
 	public static final int normalGE(
 		final Object[] rows, final int columnNo, final boolean ascFlag,
-		final int startPos, final Comparable value) {
+		final boolean notEq, final int startPos, final Comparable value) {
 		Object[] row;
 		final int len = rows.length;
 		if(value == null) {
@@ -308,7 +290,8 @@ public final class SearchUtil {
 				for(int i = startPos; i < len; i ++) {
 					row = (Object[])rows[i];
 					src = (Comparable)row[columnNo];
-					if(src != null && ((Comparable)src).compareTo(value) >= 0) {
+					if(src != null &&
+						(src.compareTo(value) >= 0) != notEq) {
 						return i;
 					}
 				}
@@ -316,7 +299,8 @@ public final class SearchUtil {
 				for(int i = startPos; i >= 0; i --) {
 					row = (Object[])rows[i];
 					src = (Comparable)row[columnNo];
-					if(src != null && ((Comparable)src).compareTo(value) >= 0) {
+					if(src != null &&
+						(src.compareTo(value) >= 0) != notEq) {
 						return i;
 					}
 				}
@@ -332,13 +316,14 @@ public final class SearchUtil {
 	 * @param rows 列行情報を設定します.
 	 * @param columnNo 対象の列番号を設定します.
 	 * @param ascFlag 昇順で検索する場合はtrueを設定します.
+	 * @param notEq 不一致条件で検索する場合は true を設定します.
 	 * @param startPos 検索開始位置を設定します.
 	 * @param value 検索する検索条件を設定します.
 	 * @return int -1の場合、情報は見つかりませんでした.
 	 */
 	public static final int normalLT(
 		final Object[] rows, final int columnNo, final boolean ascFlag,
-		final int startPos, final Comparable value) {
+		final boolean notEq, final int startPos, final Comparable value) {
 		Object[] row;
 		final int len = rows.length;
 		if(value == null) {
@@ -349,7 +334,8 @@ public final class SearchUtil {
 				for(int i = startPos; i < len; i ++) {
 					row = (Object[])rows[i];
 					src = (Comparable)row[columnNo];
-					if(src != null && ((Comparable)src).compareTo(value) < 0) {
+					if(src != null &&
+						(src.compareTo(value) < 0) != notEq) {
 						return i;
 					}
 				}
@@ -357,7 +343,8 @@ public final class SearchUtil {
 				for(int i = startPos; i >= 0; i --) {
 					row = (Object[])rows[i];
 					src = (Comparable)row[columnNo];
-					if(src != null && ((Comparable)src).compareTo(value) < 0) {
+					if(src != null &&
+						(src.compareTo(value) < 0) != notEq) {
 						return i;
 					}
 				}
@@ -373,13 +360,14 @@ public final class SearchUtil {
 	 * @param rows 列行情報を設定します.
 	 * @param columnNo 対象の列番号を設定します.
 	 * @param ascFlag 昇順で検索する場合はtrueを設定します.
+	 * @param notEq 不一致条件で検索する場合は true を設定します.
 	 * @param startPos 検索開始位置を設定します.
 	 * @param value 検索する検索条件を設定します.
 	 * @return int -1の場合、情報は見つかりませんでした.
 	 */
 	public static final int normalLE(
 		final Object[] rows, final int columnNo, final boolean ascFlag,
-		final int startPos, final Comparable value) {
+		final boolean notEq, final int startPos, final Comparable value) {
 		Object[] row;
 		final int len = rows.length;
 		if(value == null) {
@@ -390,7 +378,8 @@ public final class SearchUtil {
 				for(int i = startPos; i < len; i ++) {
 					row = (Object[])rows[i];
 					src = (Comparable)row[columnNo];
-					if(src != null && ((Comparable)src).compareTo(value) <= 0) {
+					if(src != null &&
+						(src.compareTo(value) <= 0) != notEq) {
 						return i;
 					}
 				}
@@ -398,7 +387,8 @@ public final class SearchUtil {
 				for(int i = startPos; i >= 0; i --) {
 					row = (Object[])rows[i];
 					src = (Comparable)row[columnNo];
-					if(src != null && ((Comparable)src).compareTo(value) <= 0) {
+					if(src != null &&
+						(src.compareTo(value) <= 0) != notEq) {
 						return i;
 					}
 				}
@@ -414,6 +404,7 @@ public final class SearchUtil {
 	 * @param rows 列行情報を設定します.
 	 * @param columnNo 対象の列番号を設定します.
 	 * @param ascFlag 昇順で検索する場合はtrueを設定します.
+	 * @param notEq 不一致条件で検索する場合は true を設定します.
 	 * @param startPos 検索開始位置を設定します.
 	 * @param start 開始条件を設定します.
 	 * @param end 終了条件を設定します.
@@ -421,7 +412,7 @@ public final class SearchUtil {
 	 */
 	public static final int normalBetween(
 		final Object[] rows, final int columnNo, final boolean ascFlag,
-		final int startPos, Comparable start, Comparable end) {
+		final boolean notEq, final int startPos, Comparable start, Comparable end) {
 		Object[] row;
 		final int len = rows.length;
 		if(start == null || end == null) {
@@ -434,8 +425,8 @@ public final class SearchUtil {
 					row = (Object[])rows[i];
 					src = (Comparable)row[columnNo];
 					if(src != null &&
-						((Comparable)src).compareTo(start) <= 0 &&
-						((Comparable)src).compareTo(end) >= 0) {
+						(src.compareTo(start) <= 0 &&
+						src.compareTo(end) >= 0) != notEq) {
 						return i;
 					}
 				}
@@ -445,10 +436,102 @@ public final class SearchUtil {
 					row = (Object[])rows[i];
 					src = (Comparable)row[columnNo];
 					if(src != null &&
-						((Comparable)src).compareTo(start) >= 0 &&
-						((Comparable)src).compareTo(end) <= 0) {
+						(src.compareTo(start) >= 0 &&
+						src.compareTo(end) <= 0) != notEq) {
 						return i;
 					}
+				}
+			}
+		}
+		return -1;
+	}
+
+	/**
+	 * 全件検索での複数一致情報を取得.
+	 * 全件検索を行うので、速度は遅くなります.
+	 * 
+	 * @param rows 列行情報を設定します.
+	 * @param columnNo 対象の列番号を設定します.
+	 * @param ascFlag 昇順で検索する場合はtrueを設定します.
+	 * @param notEq 不一致条件で検索する場合は true を設定します.
+	 * @param startPos 検索開始位置を設定します.
+	 * @param values 検索する検索条件群を設定します.
+	 * @return int -1の場合、情報は見つかりませんでした.
+	 */
+	public static final int normalIn(
+		final Object[] rows, final int columnNo, final boolean ascFlag,
+		final boolean notEq, final int startPos, final Comparable... values) {
+		int j;
+		Object[] row;
+		final int len = rows.length;
+		Comparable src;
+		
+		// inで設定される一致条件が存在しない場合.
+		final int valueLength = values.length;
+		if(valueLength == 0) {
+			// 処理しない.
+			return -1;
+		}
+		if(ascFlag) {
+			for(int i = startPos; i < len; i ++) {
+				row = (Object[])rows[i];
+				if((src = (Comparable)row[columnNo]) != null) {
+					for(j = 0; j < valueLength; j ++) {
+						if((src.compareTo(values[j]) == 0) != notEq) {
+							return i;
+						}
+					}
+				}
+			}
+		} else {
+			for(int i = startPos; i >= 0; i --) {
+				row = (Object[])rows[i];
+				if((src = (Comparable)row[columnNo]) != null) {
+					for(j = 0; j < valueLength; j ++) {
+						if((src.compareTo(values[j]) == 0) != notEq) {
+							return i;
+						}
+					}
+				}
+			}
+		}
+		return -1;
+	}
+
+	/**
+	 * 全件検索でLike一致情報を取得.
+	 * 全件検索を行うので、速度は遅くなります.
+	 * 
+	 * @param rows 列行情報を設定します.
+	 * @param columnNo 対象の列番号を設定します.
+	 * @param ascFlag 昇順で検索する場合はtrueを設定します.
+	 * @param notEq 不一致条件で検索する場合は true を設定します.
+	 * @param startPos 検索開始位置を設定します.
+	 * @param parser Like検索するLikeParserを設定します.
+	 * @return int -1の場合、情報は見つかりませんでした.
+	 */
+	public static final int normalLike(
+		final Object[] rows, final int columnNo, final boolean ascFlag,
+		final boolean notEq, final int startPos, final LikeParser parser) {
+		Object[] row;
+		final int len = rows.length;
+		String src;
+		if(ascFlag) {
+			for(int i = startPos; i < len; i ++) {
+				row = (Object[])rows[i];
+				src = (String)row[columnNo];
+				if(src != null &&
+					parser.match(src) != notEq) {
+					return i;
+				}
+			}
+		} else {
+			for(int i = startPos; i >= 0; i --) {
+				row = (Object[])rows[i];
+				src = (String)row[columnNo];
+				if(src != null &&
+					parser.match(src) != notEq) {
+					return i;
 				}
 			}
 		}
