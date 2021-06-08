@@ -6,7 +6,10 @@ import java.lang.reflect.Method;
 import rim.util.Flag;
 
 /**
- * ZStandard-Compress.
+ * Zstd圧縮・解凍処理.
+ * 
+ * ライブラリが正常に読まれない場合も考慮して
+ * Reflectionですべて処理を行う.
  */
 @SuppressWarnings({ "unchecked", "rawtypes" })
 public final class ZstdCompress {

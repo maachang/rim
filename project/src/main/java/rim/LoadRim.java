@@ -12,6 +12,7 @@ import rim.compress.CompressType;
 import rim.compress.Lz4Compress;
 import rim.compress.ZstdCompress;
 import rim.exception.RimException;
+import rim.util.FileUtil;
 import rim.util.UTF8IO;
 import rim.util.seabass.SeabassCompress;
 import rim.util.seabass.SeabassCompressBuffer;
@@ -674,10 +675,60 @@ public class LoadRim {
 		}
 	}
 	
+	// 対象ファイルのロード時間を計測.
+	protected static final void testLoadTime(String[] args) throws Exception {
+		String loadFileName;
+		
+		if(args.length == 0 || (loadFileName = args[0]).isEmpty()) {
+			System.err.println("ロード対象のファイル名が指定されていません.");
+			System.exit(1);
+			return;
+		}
+		
+		if(!FileUtil.isFile(loadFileName)) {
+			System.err.println("ロード対象のファイルは存在しません: " + loadFileName);
+			System.exit(1);
+			return;
+		}
+		
+		// 計測開始.
+		long tm = System.currentTimeMillis();
+		
+		// データロード.
+		load(loadFileName);
+		
+		// 計測終了.
+		tm = System.currentTimeMillis() - tm;
+		
+		System.out.println("ロードファイル名: " + loadFileName);
+		System.out.println("ファイルサイズ: " + FileUtil.getFileLength(loadFileName) + " byte");
+		System.out.println("ロード時間: " + tm + " ミリ秒");
+		
+		System.exit(0);
+	}
 	
+	// テスト用ロード時間を計測する.
 	public static final void main(String[] args) throws Exception {
 		String file = "Z:/home/maachang/project/rim/sampleData/race_horse_master.rim";
 		
 		Rim rim = load(file);
+		
+		RimBody body = rim.getBody();
+		RimIndex index = rim.getIndex("id");
+		System.out.println("body.length; "+ body.getRowLength());
+		
+		int lineNo;
+		int cnt = 0;
+		final ResultSearch<Integer> ri = index.between(true, 2283, 9998);
+		while(ri.hasNext()) {
+			if(cnt > 5) {
+				break;
+			}
+			lineNo = ri.next();
+			System.out.println("(" + cnt + ") value: " + ri.getValue() + " lineNo: " + lineNo + " " +
+				body.getRow(lineNo));
+			cnt ++;
+		}
+		
 	}
 }

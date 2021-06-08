@@ -1,3 +1,0 @@
-#!/bin/bash
-
-./crim -n ./sampleData/race_horse_master.csv -o ./sampleData/race_horse_master.rim -c Windows-31J -l 1 -p zstd1 -i id -i level -i clazz -i affiliation -i lank -i ground -i distance -i sex

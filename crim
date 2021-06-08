@@ -15,7 +15,7 @@ EXECUTE_CLAZZ=rim.command.CreateRimCommand
 JAR_NAME=${PROJECT_NAME}-${VERSION}.jar
 
 # libs.
-LIB_FILES=./project/lib/lz4-java-1.4.0.jar:./project/lib/zstd-jni-1.4.9-5.jar
+LIB_FILES=./project/lib/lz4-java-1.7.1.jar:./project/lib/zstd-jni-1.4.9-5.jar
 
 # firstMemory.
 STM=256

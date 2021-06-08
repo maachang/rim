@@ -2,6 +2,7 @@ package rim;
 
 import java.util.Date;
 
+import rim.exception.RimException;
 import rim.util.DateUtil;
 import rim.util.FixedSearchArray;
 import rim.util.TypesKeyValue;
@@ -95,26 +96,53 @@ public final class RimRow implements TypesKeyValue<Object, Object> {
 	public int size() {
 		return columnsType.length;
 	}
-
+	
+	// ゼロ文字配列.
+	private static final String[] ZERO_STRING_ARRAY = new String[0];
+	
 	@Override
 	public String toString() {
+		return toString(ZERO_STRING_ARRAY);
+	}
+
+	/**
+	 * カラム名群を指定して文字列出力.
+	 * @param columnArray 表示したいカラム名群を設定します.
+	 * @return String 文字列が返却されます.
+	 */
+	public String toString(String... columnArray) {
+		int no;
 		Object v;
 		ColumnType type;
-		final int len = columns.size();
+		final int len = columnArray.length == 0 ?
+			columns.size() :
+			columnArray.length;
 		StringBuilder buf = new StringBuilder("{");
 		for (int i = 0; i < len; i++) {
 			if (i != 0) {
-				buf.append(",");
+				buf.append(", ");
 			}
-			type = columnsType[i];
-			v = row[i];
-			buf.append(columns.get(i)).append(": ");
+			if(columnArray.length != 0) {
+				if((no = columns.search(columnArray[i])) == -1) {
+					throw new RimException("The specified column name \"" +
+						columnArray[i] + "\" does not exist. ");
+				}
+				type = columnsType[no];
+				v = row[no];
+				buf.append(columnArray[i]).append(": ");
+			} else {
+				type = columnsType[i];
+				v = row[i];
+				buf.append(columns.get(i)).append(": ");
+			}
 			if (v == null) {
 				buf.append("null");
 			} else if (type == ColumnType.String) {
 				buf.append("\"").append(v).append("\"");
 			} else if (type == ColumnType.Date) {
+				buf.append("\"");
 				DateUtil.toRfc822(buf, (Date)v);
+				buf.append("\"");
 			} else {
 				buf.append(v);
 			}

@@ -110,12 +110,16 @@ public class CreateRimCommand {
 		System.out.println();
 		System.out.println("変換時間: " + time + " msec");
 		System.out.println();
+		
+		long inSize = FileUtil.getFileLength(csvFile);
+		long outSize = FileUtil.getFileLength(outFileName);
 
 		System.out.println("入力元csv: " + csvFile);
-		System.out.println("fileSize: " + FileUtil.getFileLength(csvFile) + " byte");
+		System.out.println("fileSize: " + inSize + " byte");
 
 		System.out.println("出力先rim: " + outFileName);
-		System.out.println("fileSize: " + FileUtil.getFileLength(outFileName) + " byte");
+		System.out.println("fileSize: " + outSize + " byte");
+		System.out.println("圧縮率: " + (int)((double)outSize / (double)inSize * 100d) + " %");
 
 		System.out.println();
 

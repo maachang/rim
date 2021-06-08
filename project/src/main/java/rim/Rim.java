@@ -1,6 +1,7 @@
 package rim;
 
 import rim.exception.RimException;
+import rim.util.FixedSearchArray;
 
 /**
  * Rimデータ.
@@ -10,6 +11,8 @@ public class Rim {
 	private RimBody body;
 	// インデックスデーター.
 	private RimIndex[] indexs;
+	// インデックスを列名に紐付けた情報.
+	private FixedSearchArray<String> indexColumnNameList;
 	// インデックス生成項番.
 	private int createIndexAddCount;
 	// fixフラグ.
@@ -31,14 +34,6 @@ public class Rim {
 	}
 	
 	/**
-	 * Body情報を取得.
-	 * @return RimBody Body情報が返却されます.
-	 */
-	protected RimBody getBody() {
-		return body;
-	}
-	
-	/**
 	 * インデックスを登録.
 	 * @param columnNo 登録対象のインデックス列番号を設定します.
 	 * @param planIndexSize このインデックスの予定登録行数を設定します.
@@ -52,7 +47,7 @@ public class Rim {
 		RimIndex index = new RimIndex(columnNo,
 			body.getColumnName(columnNo),
 			body.getColumnType(columnNo),
-			body.getColumnLength(),
+			body.getRowLength(),
 			planIndexSize);
 		indexs[createIndexAddCount ++] = index;
 		return index;
@@ -68,15 +63,19 @@ public class Rim {
 		} else if(!body.isFix()) {
 			body.fix();
 		}
-		int len = indexs.length;
+		final int len = indexs.length;
+		final FixedSearchArray<String> cnames =
+			new FixedSearchArray<String>(len);
 		for(int i = 0; i < len; i ++) {
 			if(indexs[i] == null) {
 				throw new RimException(
 					"Rim data reading is not complete.");
 			} else if(!indexs[i].isFix()) {
 				indexs[i].fix();
+				cnames.add(indexs[i].getColumnName(), i);
 			}
 		}
+		indexColumnNameList = cnames;
 		fixFlag = true;
 	}
 
@@ -95,6 +94,55 @@ public class Rim {
 		if(!isFix()) {
 			throw new RimException("Rim data reading is not complete.");
 		}
+	}
+
+	/**
+	 * Body情報を取得.
+	 * @return RimBody Body情報が返却されます.
+	 */
+	protected RimBody getBody() {
+		checkFix();
+		return body;
+	}
+	
+	/**
+	 * インデックス数を取得.
+	 * @return int インデックス数が返却されます.
+	 */
+	protected int getIndexSize() {
+		checkFix();
+		return indexs.length;
+	}
+	
+	/**
+	 * 番号を指定してインデックスを取得.
+	 * @param no 取得したいインデックスの項番を設定します.
+	 * @return RimIndex インデックスが返却されます.
+	 */
+	protected RimIndex getIndex(int no) {
+		checkFix();
+		if(no < 0 || no >= indexs.length) {
+			throw new RimException(
+				"The specified index number (" +
+				no + ") is out of range.");
+		}
+		return indexs[no];
+	}
+	
+	/**
+	 * 列名を設定してインデックスを取得.
+	 * @param column 列名を設定します.
+	 * @return RimIndex インデックスが返却されます.
+	 */
+	protected RimIndex getIndex(String column) {
+		checkFix();
+		int no = indexColumnNameList.search(column);
+		if(no == -1) {
+			throw new RimException(
+				"The specified column name \"" +
+				column + "\" does not exist in the index. ");
+		}
+		return indexs[no];
 	}
 
 }

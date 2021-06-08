@@ -35,7 +35,7 @@ public class SaveRim {
 		final int rowId;
 		final Comparable value;
 
-		public IndexRow(int rowId, Comparable<?> value) {
+		public IndexRow(int rowId, Comparable value) {
 			this.rowId = rowId;
 			this.value = value;
 		}
@@ -355,13 +355,14 @@ public class SaveRim {
 	private static final ObjectList[] readCsv(CsvReader csv, ColumnType[] typeList,
 		IndexColumn[] indexList) throws IOException {
 		int i;
-		int rowId = 0;
 		Object o;
 		List<String> row;
-		final int headerLength = csv.getHeaderSize();
+		int rowId = 0;
+		// 列数を取得.
+		final int columnLength = csv.getHeaderSize();
 		// 列単位行群のBody情報を生成.
-		ObjectList[] columns = new ObjectList[headerLength];
-		for(i = 0; i < headerLength; i ++) {
+		ObjectList[] columns = new ObjectList[columnLength];
+		for(i = 0; i < columnLength; i ++) {
 			columns[i] = new ObjectList<Object>(512);
 		}
 		// csvデータのバイナリ化とIndex情報の抜き出し.
@@ -369,7 +370,7 @@ public class SaveRim {
 			// CSVの次の１行情報を取得.
 			row = csv.nextRow();
 			// 列単位でループ.
-			for(i = 0; i < headerLength; i ++) {
+			for(i = 0; i < columnLength; i ++) {
 				// 対象列の行情報にCSV列情報の行データを追加.
 				columns[i].add(
 					o = typeList[i].convert(row.get(i)));
@@ -387,13 +388,14 @@ public class SaveRim {
 			rowId ++;
 		}
 		// インデックス情報のソート処理.
-		for(i = 0; i < headerLength; i ++) {
+		for(i = 0; i < columnLength; i ++) {
 			if(indexList[i] != null) {
+				indexList[i].rows.smart();
 				indexList[i].rows.sort();
 			}
 		}
 		// 列情報のスマート化.
-		for(i = 0; i < headerLength; i ++) {
+		for(i = 0; i < columnLength; i ++) {
 			columns[i].smart();
 		}
 		return columns;
@@ -1044,7 +1046,7 @@ public class SaveRim {
 
 		// 連続する行数を出力.
 		rbb.write(len1_4Binary(tmp, byte1_4Len, end - start), 0, byte1_4Len);
-
+		
 		// 連続する行ID群を出力.
 		int ret = 0;
 		for(int i = start; i < end; i ++) {
@@ -1052,6 +1054,7 @@ public class SaveRim {
 				0, byte1_4Len);
 			ret ++;
 		}
+		
 		return ret;
 	}
 }

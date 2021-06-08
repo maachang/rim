@@ -100,16 +100,6 @@ public final class FixedSearchArray<K> {
 		keys = k;
 		createNonSortKeys();
 	}
-
-	/**
-	 * リスト追加.
-	 * 
-	 * @param key
-	 * @return
-	 */
-	public final FixedSearchArray<K> add(final K key) {
-		return add(key, count);
-	}
 	
 	/**
 	 * リスト追加.
