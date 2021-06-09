@@ -425,8 +425,8 @@ public final class SearchUtil {
 					row = (Object[])rows[i];
 					src = (Comparable)row[columnNo];
 					if(src != null &&
-						(src.compareTo(start) <= 0 &&
-						src.compareTo(end) >= 0) != notEq) {
+						(src.compareTo(start) >= 0 &&
+						src.compareTo(end) <= 0) != notEq) {
 						return i;
 					}
 				}

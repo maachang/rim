@@ -715,50 +715,205 @@ public class LoadRim {
 		
 		Rim rim = load(file);
 		
+		int execType = 0;
+		
+		// 対象列名.
 		String column = "id";
+		
+		// 昇順・降順フラグ.
+		boolean ascFlg = true;
+		
+		// notフラグ.
+		boolean notFlag = false;
+		
+		Object[] values = null;
+		
+		for(int x = 0; x < 7; x ++) {
+		for(int y = 0; y <= 1; y ++) {
+		
+		execType = x;
+		ascFlg = y == 0;
 		
 		RimBody body = rim.getBody();
 		RimIndex index = rim.getIndex(column);
-		System.out.println("[index] column: " + column +
-			" body.length; "+ body.getRowLength());
 		
-		int cnt;
 		ResultSearch<Integer> ri;
-		
-		// 昇順・降順フラグ.
-		boolean ascFlg = false;
-		
-		//ri = index.between(ascFlg, 2283, 9998);
-		ri = index.in(ascFlg, 100, 500, 2000, 5000, 9998);
-		
-		cnt = 0;
-		while(ri.hasNext()) {
-			if(cnt > 5) {
-				break;
-			}
-			ri.next();
-			System.out.println(" (" + cnt + ") value: " + ri.getValue() + " lineNo: " + ri.getLineNo() + " " +
-				body.getRow(ri.getLineNo()));
-			cnt ++;
-		}
 		
 		System.out.println();
 		
-		System.out.println("[body]");
+		System.out.println("[index] column: " + column + " exec: " + execTypeName(execType) + " ascFlg: " + ascFlg);
 		
-		//ri = body.between(ascFlg, false, column, 2283, 9998);
-		ri = body.in(ascFlg, false, column, 100, 500, 2000, 5000, 9998);
+		ri = null;
+		switch(execType) {
+		case 0:
+			values = new Object[] {
+				100
+			};
+			System.out.println("eq(ascFlg: " + ascFlg + " notFlg: " + notFlag +
+				" column: " + column + " value: " + strAry(values));
+			ri = index.eq(ascFlg, values[0]);
+			break;
+		case 1:
+			values = new Object[] {
+				2284
+			};
+			System.out.println("gt(ascFlg: " + ascFlg + " notFlg: " + notFlag +
+				" column: " + column + " value: " + strAry(values));
+			ri = index.gt(ascFlg, values[0]);
+			break;
+		case 2:
+			values = new Object[] {
+				2284
+			};
+			System.out.println("ge(ascFlg: " + ascFlg + " notFlg: " + notFlag +
+				" column: " + column + " value: " + strAry(values));
+			ri = index.ge(ascFlg, values[0]);
+			break;
+		case 3:
+			values = new Object[] {
+				4
+			};
+			System.out.println("lt(ascFlg: " + ascFlg + " notFlg: " + notFlag +
+				" column: " + column + " value: " + strAry(values));
+			ri = index.lt(ascFlg, values[0]);
+			break;
+		case 4:
+			values = new Object[] {
+				4
+			};
+			System.out.println("le(ascFlg: " + ascFlg + " notFlg: " + notFlag +
+				" column: " + column + " value: " + strAry(values));
+			ri = index.le(ascFlg, values[0]);
+			break;
+		case 5:
+			values = new Object[] {
+				2283, 9998
+			};
+			System.out.println("between(ascFlg: " + ascFlg + " notFlg: " + notFlag +
+				" column: " + column + " value: " + strAry(values));
+			ri = index.between(ascFlg, values[0], values[1]);
+			break;
+		case 6:
+			values = new Object[] {
+				100, 500, 2000, 5000, 9998
+			};
+			System.out.println("in(ascFlg: " + ascFlg + " notFlg: " + notFlag +
+				" column: " + column + " value: " + strAry(values));
+			ri = index.in(ascFlg, values);
+			break;
+		}
+		viewResultSearch(ri, body, 5);
 		
-		cnt = 0;
+		System.out.println();
+		
+		System.out.println("[body] column: " + column + " exec: " + execTypeName(execType) + " ascFlg: " + ascFlg);
+		
+		ri = null;
+		switch(execType) {
+		case 0:
+			values = new Object[] {
+				100
+			};
+			System.out.println("eq(ascFlg: " + ascFlg + " notFlg: " + notFlag +
+				" column: " + column + " value: " + strAry(values));
+			ri = body.eq(ascFlg, notFlag, column, values[0]);
+			break;
+		case 1:
+			values = new Object[] {
+				2284
+			};
+			System.out.println("gt(ascFlg: " + ascFlg + " notFlg: " + notFlag +
+				" column: " + column + " value: " + strAry(values));
+			ri = body.gt(ascFlg, notFlag, column, values[0]);
+			break;
+		case 2:
+			values = new Object[] {
+				2284
+			};
+			System.out.println("ge(ascFlg: " + ascFlg + " notFlg: " + notFlag +
+				" column: " + column + " value: " + strAry(values));
+			ri = body.ge(ascFlg, notFlag, column, values[0]);
+			break;
+		case 3:
+			values = new Object[] {
+				4
+			};
+			System.out.println("lt(ascFlg: " + ascFlg + " notFlg: " + notFlag +
+				" column: " + column + " value: " + strAry(values));
+			ri = body.lt(ascFlg, notFlag, column, values[0]);
+			break;
+		case 4:
+			values = new Object[] {
+				4
+			};
+			System.out.println("le(ascFlg: " + ascFlg + " notFlg: " + notFlag +
+				" column: " + column + " value: " + strAry(values));
+			ri = body.le(ascFlg, notFlag, column, values[0]);
+			break;
+		case 5:
+			values = new Object[] {
+				2283, 9998
+			};
+			System.out.println("between(ascFlg: " + ascFlg + " notFlg: " + notFlag +
+				" column: " + column + " value: " + strAry(values));
+			ri = body.between(ascFlg, notFlag, column, values[0], values[1]);
+			break;
+		case 6:
+			values = new Object[] {
+				100, 500, 2000, 5000, 9998
+			};
+			System.out.println("in(ascFlg: " + ascFlg + " notFlg: " + notFlag +
+				" column: " + column + " value: " + strAry(values));
+			ri = body.in(ascFlg, notFlag, column, values);
+			break;
+		}
+		viewResultSearch(ri, body, 5);
+		
+		System.out.println();
+		
+		}}
+	}
+	
+	private static final void viewResultSearch(ResultSearch<Integer> ri, RimBody body, int maxCnt) {
+		int cnt = 0;
 		while(ri.hasNext()) {
-			if(cnt > 5) {
+			if(cnt > maxCnt) {
 				break;
 			}
 			ri.next();
 			System.out.println(" (" + cnt + ") value: " + ri.getValue() + " lineNo: " + ri.getLineNo() + " " +
-				body.getRow(ri.getLineNo()));
+				"");
+				//body.getRow(ri.getLineNo()));
 			cnt ++;
 		}
-
 	}
+	
+	private static final String execTypeName(int no) {
+		switch(no) {
+		case 0: return "eq";
+		case 1: return "gt";
+		case 2: return "ge";
+		case 3: return "lt";
+		case 4: return "le";
+		case 5: return "between";
+		case 6: return "in";
+		}
+		return "unknown";
+	}
+	
+	private static final String strAry(Object[] ary) {
+		int len = ary.length;
+		if(len == 1) {
+			return String.valueOf(ary[0]);
+		}
+		StringBuilder buf = new StringBuilder("[");
+		for(int i = 0; i < len; i ++) {
+			if(i != 0) {
+				buf.append(", ");
+			}
+			buf.append(ary[i]);
+		}
+		return buf.append("]").toString();
+	}
+
 }

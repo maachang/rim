@@ -349,14 +349,15 @@ public class RimIndex {
 	
 	/**
 	 * 一致した検索条件を取得.
+	 * @param ascFlag 昇順で情報取得する場合は true.
 	 * @param value 条件を設定します.
 	 * @return SearchResult<Integer> 検索結果が返却されます.
 	 */
-	public ResultSearch<Integer> eq(Object value) {
+	public ResultSearch<Integer> eq(boolean ascFlag, Object value) {
 		checkFix();
 		value = columnType.convert(value);
 		final int pos = SearchUtil.indexEq(fixIndex, (Comparable)value);
-		return new ResultSearchIndex(false, true, this, pos, null);
+		return new ResultSearchIndex(false, ascFlag, this, pos, NOT_END);
 	}
 	
 	/**
@@ -369,7 +370,12 @@ public class RimIndex {
 		checkFix();
 		value = columnType.convert(value);
 		final int pos = SearchUtil.indexGT(fixIndex, (Comparable)value);
-		return new ResultSearchIndex(true, ascFlag, this, pos, null);
+		if(ascFlag) {
+			return new ResultSearchIndex(true, ascFlag, this, pos, NOT_END);
+		} else {
+			return new ResultSearchIndex(
+				true, ascFlag, this, fixIndex.length - 1, new RowIdResultEnd(pos));
+		}
 	}
 	
 	/**
@@ -382,7 +388,12 @@ public class RimIndex {
 		checkFix();
 		value = columnType.convert(value);
 		final int pos = SearchUtil.indexGE(fixIndex, (Comparable)value);
-		return new ResultSearchIndex(true, ascFlag, this, pos, null);
+		if(ascFlag) {
+			return new ResultSearchIndex(true, ascFlag, this, pos, NOT_END);
+		} else {
+			return new ResultSearchIndex(
+				true, ascFlag, this, fixIndex.length - 1, new RowIdResultEnd(pos));
+		}
 	}
 	
 	/**
@@ -395,7 +406,11 @@ public class RimIndex {
 		checkFix();
 		value = columnType.convert(value);
 		final int pos = SearchUtil.indexLT(fixIndex, (Comparable)value);
-		return new ResultSearchIndex(true, ascFlag, this, pos, null);
+		if(ascFlag) {
+			return new ResultSearchIndex(true, ascFlag, this, 0, new RowIdResultEnd(pos));
+		} else {
+			return new ResultSearchIndex(true, ascFlag, this, pos, NOT_END);
+		}
 	}
 	
 	/**
@@ -408,7 +423,11 @@ public class RimIndex {
 		checkFix();
 		value = columnType.convert(value);
 		final int pos = SearchUtil.indexLE(fixIndex, (Comparable)value);
-		return new ResultSearchIndex(true, ascFlag, this, pos, null);
+		if(ascFlag) {
+			return new ResultSearchIndex(true, ascFlag, this, 0, new RowIdResultEnd(pos));
+		} else {
+			return new ResultSearchIndex(true, ascFlag, this, pos, NOT_END);
+		}
 	}
 	
 	/**
@@ -448,7 +467,7 @@ public class RimIndex {
 			// 小なり[<=]検索.
 			pos = SearchUtil.indexLE(fixIndex, start);
 		}
-		return new ResultSearchIndex(true, ascFlag, this, pos, end);
+		return new ResultSearchIndex(true, ascFlag, this, pos, new ValueResultEnd(end));
 	}
 	
 	/**
@@ -461,6 +480,97 @@ public class RimIndex {
 		checkFix();
 		return new ResultSearchIndexIn(ascFlag, this, values);
 	}
+	
+	/**
+	 * ResultSearchIndexの終端を判別する条件.
+	 */
+	private static interface ResultEnd {
+		/**
+		 * この条件が終端かチェック.
+		 * @param ascFlag 昇順の場合は true.
+		 * @param nowRowId 現在の行番号が設定されます.
+		 * @param nowValue 現在の要素が設定されます.
+		 * @return boolean trueの場合は終端です.
+		 */
+		public boolean isEnd(boolean ascFlag, int nowRowId, Comparable nowValue);
+	}
+	
+	// 終端なしの設定を行う場合に利用.
+	private static final NotResultEnd NOT_END = new NotResultEnd();
+	
+	/**
+	 * 終端なし.
+	 */
+	private static final class NotResultEnd implements ResultEnd {
+		@Override
+		public boolean isEnd(boolean ascFlag, int nowRowId, Comparable nowValue) {
+			return false;
+		}
+	}
+	
+	/**
+	 * Value条件での終端定義.
+	 */
+	private static final class ValueResultEnd implements ResultEnd {
+		// 終端条件.
+		private Comparable endValue;
+		// 終端一致チェック.
+		private boolean eqEndFlag;
+		
+		/**
+		 * コンストラクタ.
+		 * @param endValue 読み込み終了条件を設定します.
+		 */
+		ValueResultEnd(Comparable endValue) {
+			this(endValue, true);
+		}
+		
+		/**
+		 * コンストラクタ.
+		 * @param endValue 読み込み終了条件を設定します.
+		 * @param eqEnd endValueが一致で終了の場合は true.
+		 */
+		ValueResultEnd(Comparable endValue, boolean eqEndFlag) {
+			this.endValue = endValue;
+			this.eqEndFlag = eqEndFlag;
+		}
+		
+		@Override
+		public boolean isEnd(boolean ascFlag, int nowRowId, Comparable nowValue) {
+			final int cmp = endValue.compareTo(nowValue);
+			
+			// eqEndFlag が true の場合は、終了条件一致まで.
+			// eqEndFlag が false の場合は、終了条件一致手前まで.
+			return
+				// 昇順.
+				(ascFlag && ((eqEndFlag && cmp < 0) || (!eqEndFlag && cmp <= 0))) ||
+				// 降順.
+				(!ascFlag && ((eqEndFlag && cmp > 0) || (!eqEndFlag && cmp >= 0)));
+		}
+	}
+	
+	/**
+	 * 行番号での終端定義.
+	 */
+	private static final class RowIdResultEnd implements ResultEnd {
+		// 終端行番号.
+		private int endRowId;
+
+		/**
+		 * コンストラクタ.
+		 * @param endVRowId 読み込み終了行番号を設定します.
+		 */
+		RowIdResultEnd(int endRowId) {
+			this.endRowId = endRowId;
+		}
+		
+		@Override
+		public boolean isEnd(boolean ascFlag, int nowRowId, Comparable nowValue) {
+			return (ascFlag && nowRowId > endRowId) ||
+				(!ascFlag && nowRowId < endRowId);	
+		}
+	}
+	
 	
 	// インデックス検索結果情報.
 	private static final class ResultSearchIndex
@@ -481,8 +591,8 @@ public class RimIndex {
 		// 昇順フラグ.
 		private boolean ascFlag;
 		
-		// 終端条件.
-		private Comparable endValue;
+		// 検索終了条件.
+		private ResultEnd resultEnd;
 		
 		// 今回取得情報.
 		private Comparable nowValue;
@@ -494,11 +604,10 @@ public class RimIndex {
 		 * @param ascFlag 昇順で情報取得する場合は true.
 		 * @param rimIndex RimIndexオブジェクトを設定します.
 		 * @param indexPos インデックス項番の位置を設定します.
-		 * @param endValue 読み込み終了条件を設定します.
-		 *                 nullを設定した場合、読み込み終了条件は設定しません.
+		 * @param resultEnd 読み込み終了条件を設定します.
 		 */
 		public ResultSearchIndex(boolean nextFlag, boolean ascFlag, RimIndex rimIndex,
-			int indexPos, Comparable endValue) {
+			int indexPos, ResultEnd resultEnd) {
 			this.nextFlag = nextFlag;
 			this.rimIndex = rimIndex;
 			this.indexPos = indexPos;
@@ -510,8 +619,9 @@ public class RimIndex {
 				this.elementPos = ascFlag ? 0 : element.getLineLength() - 1;
 			}
 			this.ascFlag = ascFlag;
-			this.endValue = endValue == null ? null :
-				(Comparable)element.getColumnType().convert(endValue);
+			
+			// 読み込み終了条件を設定します.
+			this.resultEnd = resultEnd;
 		}
 		
 		// 次の情報を読み込む.
@@ -534,12 +644,15 @@ public class RimIndex {
 				if(ascFlag) {
 					
 					// 次のIndex要素を取得.
-					element = rimIndex.getRimIndexElement(++ indexPos);
+					if((element = rimIndex.getRimIndexElement(++ indexPos)) == null) {
+						// 情報が存在しない場合処理終了.
+						nextFlag = false;
+						element = null;
+						return false;
+					}
 					
-					// 情報が存在しない場合.
-					// 終了条件が設定されていて、その終了条件を超える場合.
-					if(element == null || (endValue != null &&
-						endValue.compareTo(element.getValue()) < 0)) {
+					// 終了条件にマッチする場合.
+					if(resultEnd.isEnd(ascFlag, indexPos, element.getValue())) {
 						// 処理終了.
 						nextFlag = false;
 						element = null;
@@ -552,12 +665,15 @@ public class RimIndex {
 				} else {
 					
 					// 前のIndex要素を取得.
-					element = rimIndex.getRimIndexElement(-- indexPos);
+					if((element = rimIndex.getRimIndexElement(-- indexPos)) == null) {
+						// 情報が存在しない場合処理終了.
+						nextFlag = false;
+						element = null;
+						return false;
+					}
 					
-					// 情報が存在しない場合.
-					// 終了条件が設定されていて、その終了条件を超える場合.
-					if(element == null || (endValue != null &&
-						endValue.compareTo(element.getValue()) > 0)) {
+					// 終了条件にマッチする場合.
+					if(resultEnd.isEnd(ascFlag, indexPos, element.getValue())) {
 						// 処理終了.
 						nextFlag = false;
 						element = null;
@@ -655,14 +771,14 @@ public class RimIndex {
 				// 昇順.
 				for(i = 0; i < len; i ++) {
 					pos = SearchUtil.indexEq(rimIndex.fixIndex, (Comparable)values[i]);
-					inList[i] = new ResultSearchIndex(false, ascFlag, rimIndex, pos, null);
+					inList[i] = new ResultSearchIndex(false, ascFlag, rimIndex, pos, NOT_END);
 				}
 				targetIn = 0;
 			} else {
 				// 降順.
 				for(i = len - 1; i >= 0; i --) {
 					pos = SearchUtil.indexEq(rimIndex.fixIndex, (Comparable)values[i]);
-					inList[i] = new ResultSearchIndex(false, ascFlag, rimIndex, pos, null);
+					inList[i] = new ResultSearchIndex(false, ascFlag, rimIndex, pos, NOT_END);
 				}
 				targetIn = len - 1;
 			}
