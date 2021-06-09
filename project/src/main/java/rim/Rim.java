@@ -1,5 +1,7 @@
 package rim;
 
+import rim.core.RimBody;
+import rim.core.RimIndex;
 import rim.exception.RimException;
 import rim.util.FixedSearchArray;
 
@@ -25,9 +27,8 @@ public class Rim {
 	 * @param rowLength 総行数を設定します.
 	 * @param indexLength 登録されてるインデックス数を設定します.
 	 */
-	protected Rim(String[] columns, ColumnType[] types, int rowLength,
-		int indexLength) {
-		this.body = new RimBody(columns, types, rowLength);
+	public Rim(RimBody body, int indexLength) {
+		this.body = body;
 		this.indexs = new RimIndex[indexLength];
 		this.createIndexAddCount = 0;
 		this.fixFlag = false;
@@ -39,16 +40,12 @@ public class Rim {
 	 * @param planIndexSize このインデックスの予定登録行数を設定します.
 	 * @return RimIndex 登録されたインデックスが返却されます.
 	 */
-	protected RimIndex registerIndex(int columnNo, int planIndexSize) {
+	public RimIndex registerIndex(int columnNo, int planIndexSize) {
 		if(indexs.length <= createIndexAddCount) {
 			throw new RimException("The number of indexes to be registered ("
 				+ indexs.length + ") has been exceeded: " + createIndexAddCount);
 		}
-		RimIndex index = new RimIndex(columnNo,
-			body.getColumnName(columnNo),
-			body.getColumnType(columnNo),
-			body.getRowLength(),
-			planIndexSize);
+		RimIndex index = body.createIndex(columnNo, planIndexSize);
 		indexs[createIndexAddCount ++] = index;
 		return index;
 	}
@@ -57,7 +54,7 @@ public class Rim {
 	 * Bodyと登録インデックス群の追加処理がすべて完了した場合に
 	 * 呼び出します.
 	 */
-	protected void fix() {
+	public void fix() {
 		if(fixFlag) {
 			return;
 		} else if(!body.isFix()) {
@@ -83,7 +80,7 @@ public class Rim {
 	 * 追加処理がFixしているか取得.
 	 * @return boolean trueの場合Fixしています.
 	 */
-	protected boolean isFix() {
+	public boolean isFix() {
 		return fixFlag;
 	}
 
@@ -100,7 +97,7 @@ public class Rim {
 	 * Body情報を取得.
 	 * @return RimBody Body情報が返却されます.
 	 */
-	protected RimBody getBody() {
+	public RimBody getBody() {
 		checkFix();
 		return body;
 	}
@@ -109,7 +106,7 @@ public class Rim {
 	 * インデックス数を取得.
 	 * @return int インデックス数が返却されます.
 	 */
-	protected int getIndexSize() {
+	public int getIndexSize() {
 		checkFix();
 		return indexs.length;
 	}
@@ -119,7 +116,7 @@ public class Rim {
 	 * @param no 取得したいインデックスの項番を設定します.
 	 * @return RimIndex インデックスが返却されます.
 	 */
-	protected RimIndex getIndex(int no) {
+	public RimIndex getIndex(int no) {
 		checkFix();
 		if(no < 0 || no >= indexs.length) {
 			throw new RimException(
@@ -134,7 +131,7 @@ public class Rim {
 	 * @param column 列名を設定します.
 	 * @return RimIndex インデックスが返却されます.
 	 */
-	protected RimIndex getIndex(String column) {
+	public RimIndex getIndex(String column) {
 		checkFix();
 		int no = indexColumnNameList.search(column);
 		if(no == -1) {

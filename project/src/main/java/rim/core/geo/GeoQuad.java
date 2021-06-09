@@ -1,4 +1,4 @@
-package rim.rimdb.geo;
+package rim.core.geo;
 
 /**
  * QuadKey.

@@ -1,4 +1,4 @@
-package rim;
+package rim.core;
 
 import java.util.Iterator;
 
@@ -6,7 +6,7 @@ import java.util.Iterator;
  * 検索結果の情報.
  */
 @SuppressWarnings("rawtypes")
-interface ResultSearch<T> extends Iterator<T> {
+public interface ResultSearch<T> extends Iterator<T> {
 	/**
 	 * 対象要素を取得.
 	 * @return Comprable 対象要素が返却されます.

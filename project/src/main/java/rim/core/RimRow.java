@@ -1,4 +1,4 @@
-package rim;
+package rim.core;
 
 import java.util.Date;
 
@@ -22,7 +22,7 @@ public final class RimRow implements TypesKeyValue<Object, Object> {
 	 * @param columns     カラム管理情報を設定します.
 	 * @param columnsType 型情報群を設定します.
 	 */
-	protected RimRow(FixedSearchArray<String> columns,
+	public RimRow(FixedSearchArray<String> columns,
 		ColumnType[] columnsType) {
 		this.columns = columns;
 		this.columnsType = columnsType;

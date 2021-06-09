@@ -1,4 +1,4 @@
-package rim;
+package rim.core;
 
 import java.io.BufferedOutputStream;
 import java.io.FileOutputStream;
@@ -8,6 +8,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.zip.GZIPOutputStream;
 
+import rim.RimConstants;
 import rim.compress.CompressBuffer;
 import rim.compress.CompressType;
 import rim.compress.Lz4Compress;

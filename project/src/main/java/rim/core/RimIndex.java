@@ -1,5 +1,6 @@
-package rim;
+package rim.core;
 
+import java.util.Arrays;
 import java.util.NoSuchElementException;
 
 import rim.exception.RimException;
@@ -14,7 +15,7 @@ public class RimIndex {
 	/**
 	 * Rimインデックス要素.
 	 */
-	protected static interface RimIndexElement extends Comparable {
+	private static interface RimIndexElement extends Comparable {
 		/**
 		 * インデックス型を取得.
 		 * @return
@@ -208,7 +209,7 @@ public class RimIndex {
 	private int indexSize = 0;
 	// 登録予定のインデックス総行数.
 	private int planIndexSize;
-
+	
 	/**
 	 * コンストラクタ.
 	 * @param columnNo このインデックスの列番号が設定されます.
@@ -270,7 +271,7 @@ public class RimIndex {
 	/**
 	 * 追加処理が完了した場合に呼び出します.
 	 */
-	protected void fix() {
+	public void fix() {
 		if(index == null) {
 			return;
 		} else if(planIndexSize != indexSize) {
@@ -286,7 +287,7 @@ public class RimIndex {
 	 * 追加処理がFixしているか取得.
 	 * @return boolean trueの場合Fixしています.
 	 */
-	protected boolean isFix() {
+	public boolean isFix() {
 		return index == null;
 	}
 
@@ -331,141 +332,14 @@ public class RimIndex {
 		return indexSize;
 	}
 	
-	// インデックス検索結果情報.
-	private static final class ResultSearchIndex
-		implements ResultSearch<Integer> {
-		
-		// 次の情報が取得可能な場合 true.
-		private boolean nextFlag;
-		// このインデックス管理情報.
-		private RimIndex rimIndex;
-		// 現在取得中のIndex位置.
-		private int indexPos;
-		
-		// 現在取得中のIndex要素.
-		private RimIndexElement element;
-		// 取得中Indexの行取得ポジション.
-		private int elementPos;
-		
-		// 昇順フラグ.
-		private boolean ascFlag;
-		
-		// 終端条件.
-		private Comparable endValue;
-		
-		/**
-		 * コンストラクタ.
-		 * @param nextFlag １要素で情報の取得を中断する場合は true.
-		 * @param ascFlag 昇順で情報取得する場合は true.
-		 * @param rimIndex RimIndexオブジェクトを設定します.
-		 * @param indexPos インデックス項番の位置を設定します.
-		 * @param endValue 読み込み終了条件を設定します.
-		 *                 nullを設定した場合、読み込み終了条件は設定しません.
-		 */
-		public ResultSearchIndex(boolean nextFlag, boolean ascFlag, RimIndex rimIndex,
-			int indexPos, Comparable endValue) {
-			this.nextFlag = nextFlag;
-			this.rimIndex = rimIndex;
-			this.indexPos = indexPos;
-			
-			// posが範囲外の場合はnullが返却される.
-			this.element = rimIndex.getRimIndexElement(indexPos);
-			this.elementPos = 0;
-			
-			this.ascFlag = ascFlag;
-			this.endValue = endValue == null ? null :
-				(Comparable)element.getColumnType().convert(endValue);
-		}
-		
-		// 次の情報を読み込む.
-		private final boolean getNextElement() {
-			// 読み込み情報が存在しない場合.
-			if(element == null) {
-				return false;
-			// 現在取得中の要素にある行番号の読み込みが完了した場合.
-			// 次の情報を読み込む.
-			} else if(element.getLineLength() <= elementPos) {
-				// 次の読み込みを行わない設定の場合.
-				if(!nextFlag) {
-					// 処理終了.
-					element = null;
-					return false;
-				}
-				
-				// 昇順の場合.
-				if(ascFlag) {
-					
-					// 次のIndex要素を取得.
-					element = rimIndex.getRimIndexElement(++ indexPos);
-					
-					// 情報が存在しない場合.
-					// 終了条件が設定されていて、その終了条件を超える場合.
-					if(element == null || (endValue != null &&
-						endValue.compareTo(element.getValue()) < 0)) {
-						// 処理終了.
-						nextFlag = false;
-						element = null;
-						return false;
-					}
-					
-				// 降順の場合.
-				} else {
-					
-					// 前のIndex要素を取得.
-					element = rimIndex.getRimIndexElement(-- indexPos);
-					
-					// 情報が存在しない場合.
-					// 終了条件が設定されていて、その終了条件を超える場合.
-					if(element == null || (endValue != null &&
-						endValue.compareTo(element.getValue()) > 0)) {
-						// 処理終了.
-						nextFlag = false;
-						element = null;
-						return false;
-					}
-				}
-				// ポジション初期化.
-				elementPos = 0;
-			}
-			return true;
-		}
 
-		@Override
-		public boolean hasNext() {
-			return getNextElement();
-		}
-
-		@Override
-		public Integer next() {
-			if(!getNextElement()) {
-				throw new NoSuchElementException();
-			}
-			return element.getLineNo(elementPos ++);
-		}
-		
-		@Override
-		public Comparable getValue() {
-			if(element == null) {
-				throw new NoSuchElementException();
-			}
-			return element.getValue();
-		}
-		
-		@Override
-		public int getLineNo() {
-			if(element == null) {
-				throw new NoSuchElementException();
-			}
-			return element.getLineNo(elementPos);
-		}
-	}
 	
 	/**
 	 * 番号を指定してRimIndexElementを取得.
 	 * @param indexPos RimIndexElementを取得する番号を設定します.
 	 * @return RimIndexElement RimIndexElementが返却されます.
 	 */
-	protected RimIndexElement getRimIndexElement(int indexPos) {
+	public RimIndexElement getRimIndexElement(int indexPos) {
 		checkFix();
 		if(indexPos >= 0 && indexPos < fixIndex.length) {
 			return fixIndex[indexPos];
@@ -478,7 +352,7 @@ public class RimIndex {
 	 * @param value 条件を設定します.
 	 * @return SearchResult<Integer> 検索結果が返却されます.
 	 */
-	protected ResultSearch<Integer> eq(Object value) {
+	public ResultSearch<Integer> eq(Object value) {
 		checkFix();
 		value = columnType.convert(value);
 		final int pos = SearchUtil.indexEq(fixIndex, (Comparable)value);
@@ -491,7 +365,7 @@ public class RimIndex {
 	 * @param value 条件を設定します.
 	 * @return SearchResult<Integer> 検索結果が返却されます.
 	 */
-	protected ResultSearch<Integer> gt(boolean ascFlag, Object value) {
+	public ResultSearch<Integer> gt(boolean ascFlag, Object value) {
 		checkFix();
 		value = columnType.convert(value);
 		final int pos = SearchUtil.indexGT(fixIndex, (Comparable)value);
@@ -504,7 +378,7 @@ public class RimIndex {
 	 * @param value 条件を設定します.
 	 * @return SearchResult<Integer> 検索結果が返却されます.
 	 */
-	protected ResultSearch<Integer> ge(boolean ascFlag, Object value) {
+	public ResultSearch<Integer> ge(boolean ascFlag, Object value) {
 		checkFix();
 		value = columnType.convert(value);
 		final int pos = SearchUtil.indexGE(fixIndex, (Comparable)value);
@@ -517,7 +391,7 @@ public class RimIndex {
 	 * @param value 条件を設定します.
 	 * @return SearchResult<Integer> 検索結果が返却されます.
 	 */
-	protected ResultSearch<Integer> lt(boolean ascFlag, Object value) {
+	public ResultSearch<Integer> lt(boolean ascFlag, Object value) {
 		checkFix();
 		value = columnType.convert(value);
 		final int pos = SearchUtil.indexLT(fixIndex, (Comparable)value);
@@ -530,7 +404,7 @@ public class RimIndex {
 	 * @param value 条件を設定します.
 	 * @return SearchResult<Integer> 検索結果が返却されます.
 	 */
-	protected ResultSearch<Integer> le(boolean ascFlag, Object value) {
+	public ResultSearch<Integer> le(boolean ascFlag, Object value) {
 		checkFix();
 		value = columnType.convert(value);
 		final int pos = SearchUtil.indexLE(fixIndex, (Comparable)value);
@@ -544,7 +418,7 @@ public class RimIndex {
 	 * @param endObj 終了条件を設定します.
 	 * @return SearchResult<Integer> 検索結果が返却されます.
 	 */
-	protected ResultSearch<Integer> between(
+	public ResultSearch<Integer> between(
 		boolean ascFlag, Object startObj, Object endObj) {
 		checkFix();
 		Comparable start = (Comparable)columnType.convert(startObj);
@@ -576,4 +450,302 @@ public class RimIndex {
 		}
 		return new ResultSearchIndex(true, ascFlag, this, pos, end);
 	}
+	
+	/**
+	 * 複数一致条件[in]の検索条件を取得.
+	 * @param ascFlag 昇順で情報取得する場合は true.
+	 * @param values In条件群を設定します.
+	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 */
+	public ResultSearch<Integer> in(boolean ascFlag, Object... values) {
+		checkFix();
+		return new ResultSearchIndexIn(ascFlag, this, values);
+	}
+	
+	// インデックス検索結果情報.
+	private static final class ResultSearchIndex
+		implements ResultSearch<Integer> {
+		
+		// 次の情報が取得可能な場合 true.
+		private boolean nextFlag;
+		// このインデックス管理情報.
+		private RimIndex rimIndex;
+		// 現在取得中のIndex位置.
+		private int indexPos;
+		
+		// 現在取得中のIndex要素.
+		private RimIndexElement element;
+		// 取得中Indexの行取得ポジション.
+		private int elementPos;
+		
+		// 昇順フラグ.
+		private boolean ascFlag;
+		
+		// 終端条件.
+		private Comparable endValue;
+		
+		// 今回取得情報.
+		private Comparable nowValue;
+		private int nowLineNo;
+		
+		/**
+		 * コンストラクタ.
+		 * @param nextFlag １要素で情報の取得を中断する場合は true.
+		 * @param ascFlag 昇順で情報取得する場合は true.
+		 * @param rimIndex RimIndexオブジェクトを設定します.
+		 * @param indexPos インデックス項番の位置を設定します.
+		 * @param endValue 読み込み終了条件を設定します.
+		 *                 nullを設定した場合、読み込み終了条件は設定しません.
+		 */
+		public ResultSearchIndex(boolean nextFlag, boolean ascFlag, RimIndex rimIndex,
+			int indexPos, Comparable endValue) {
+			this.nextFlag = nextFlag;
+			this.rimIndex = rimIndex;
+			this.indexPos = indexPos;
+			
+			// posが範囲外の場合はnullが返却される.
+			this.element = rimIndex.getRimIndexElement(indexPos);
+			// nullでない場合は、要素の開始位置をセット.
+			if(element != null) {
+				this.elementPos = ascFlag ? 0 : element.getLineLength() - 1;
+			}
+			this.ascFlag = ascFlag;
+			this.endValue = endValue == null ? null :
+				(Comparable)element.getColumnType().convert(endValue);
+		}
+		
+		// 次の情報を読み込む.
+		private final boolean getNextElement() {
+			// 読み込み情報が存在しない場合.
+			if(element == null) {
+				return false;
+			// 現在取得中の要素にある行番号の読み込みが完了した場合.
+			// 次の情報を読み込む.
+			} else if((ascFlag && element.getLineLength() <= elementPos) ||
+					(!ascFlag && elementPos < 0)) {
+				// 次の読み込みを行わない設定の場合.
+				if(!nextFlag) {
+					// 処理終了.
+					element = null;
+					return false;
+				}
+				
+				// 昇順の場合.
+				if(ascFlag) {
+					
+					// 次のIndex要素を取得.
+					element = rimIndex.getRimIndexElement(++ indexPos);
+					
+					// 情報が存在しない場合.
+					// 終了条件が設定されていて、その終了条件を超える場合.
+					if(element == null || (endValue != null &&
+						endValue.compareTo(element.getValue()) < 0)) {
+						// 処理終了.
+						nextFlag = false;
+						element = null;
+						return false;
+					}
+					// ポジション初期化.
+					elementPos = 0;
+					
+				// 降順の場合.
+				} else {
+					
+					// 前のIndex要素を取得.
+					element = rimIndex.getRimIndexElement(-- indexPos);
+					
+					// 情報が存在しない場合.
+					// 終了条件が設定されていて、その終了条件を超える場合.
+					if(element == null || (endValue != null &&
+						endValue.compareTo(element.getValue()) > 0)) {
+						// 処理終了.
+						nextFlag = false;
+						element = null;
+						return false;
+					}
+					// ポジション初期化.
+					elementPos = element.getLineLength() - 1;
+				}
+			}
+			return true;
+		}
+
+		@Override
+		public boolean hasNext() {
+			return getNextElement();
+		}
+
+		@Override
+		public Integer next() {
+			if(!getNextElement()) {
+				throw new NoSuchElementException();
+			}
+			// 今回分のデータを取得.
+			nowValue = element.getValue();
+			nowLineNo = element.getLineNo(elementPos);
+			// 昇順.
+			if(ascFlag) {
+				elementPos ++;
+			// 降順.
+			} else {
+				elementPos --;
+			}
+			return nowLineNo;
+		}
+		
+		@Override
+		public Comparable getValue() {
+			if(element == null) {
+				throw new NoSuchElementException();
+			}
+			return nowValue;
+		}
+		
+		@Override
+		public int getLineNo() {
+			if(element == null) {
+				throw new NoSuchElementException();
+			}
+			return nowLineNo;
+		}
+	}
+	
+	// [IN]インデックス検索結果情報.
+	private static final class ResultSearchIndexIn
+		implements ResultSearch<Integer> {
+		// in 条件.
+		private ResultSearch<Integer>[] inList;
+		// 現在のIn条件取得項番.
+		private int targetIn;
+		
+		// 昇順フラグ.
+		private boolean ascFlag;
+		
+		// 終了フラグ.
+		private boolean exitFlag;
+		
+		/**
+		 * コンストラクタ.
+		 * @param ascFlag 昇順で情報取得する場合は true.
+		 * @param rimIndex RimIndexオブジェクトを設定します.
+		 * @param values In条件群を設定します.
+		 */
+		public ResultSearchIndexIn(boolean ascFlag, RimIndex rimIndex, Object... values) {
+			int len = values.length;
+			// in条件が指定されていない場合.
+			if(len == 0) {
+				throw new RimException("At least one condition must be set.");
+			}
+			int i, pos, targetIn;
+			ColumnType columnType = rimIndex.columnType;
+			ResultSearch<Integer>[] inList = new ResultSearch[len];
+			
+			// valueを列型変換してソート処理.
+			for(i = 0; i < len; i ++) {
+				values[i] = columnType.convert(values[i]);
+				// valuesのどれかがnullの場合は例外.
+				if(values[i] == null) {
+					throw new RimException("Null cannot be set in the search condition.");
+				}
+			}
+			Arrays.sort(values);
+			
+			// in条件毎にResultSearchIndexを作成する.
+			if(ascFlag) {
+				// 昇順.
+				for(i = 0; i < len; i ++) {
+					pos = SearchUtil.indexEq(rimIndex.fixIndex, (Comparable)values[i]);
+					inList[i] = new ResultSearchIndex(false, ascFlag, rimIndex, pos, null);
+				}
+				targetIn = 0;
+			} else {
+				// 降順.
+				for(i = len - 1; i >= 0; i --) {
+					pos = SearchUtil.indexEq(rimIndex.fixIndex, (Comparable)values[i]);
+					inList[i] = new ResultSearchIndex(false, ascFlag, rimIndex, pos, null);
+				}
+				targetIn = len - 1;
+			}
+			// 生成できた場合は情報セット.
+			this.inList = inList;
+			this.targetIn = targetIn;
+			this.ascFlag = ascFlag;
+			this.exitFlag = false;
+		}
+		
+		@Override
+		public boolean hasNext() {
+			// 終端の場合.
+			if(exitFlag) {
+				return false;
+			// 現在の読み込み対象のResultSearchIndexが読み終わってる場合.
+			} else if(inList[targetIn].hasNext()) {
+				return true;
+			}
+			// 以降の条件が存在するかチェック.
+			if(ascFlag) {
+				final int len = inList.length;
+				while(len > targetIn + 1) {
+					if(inList[++ targetIn].hasNext()) {
+						return true;
+					}
+				}
+			} else {
+				while(targetIn > 0) {
+					if(inList[-- targetIn].hasNext()) {
+						return true;
+					}
+				}
+			}
+			// 存在しない場合は終端をセット.
+			exitFlag = true;
+			return false;
+		}
+
+		@Override
+		public Integer next() {
+			// 終端の場合.
+			if(exitFlag) {
+				throw new NoSuchElementException();
+			// 現在の読み込み対象のResultSearchIndexが読み終わってる場合.
+			} else if(inList[targetIn].hasNext()) {
+				return inList[targetIn].next();
+			}
+			// 以降の条件が存在するかチェック.
+			if(ascFlag) {
+				final int len = inList.length;
+				while(len > targetIn + 1) {
+					if(inList[++ targetIn].hasNext()) {
+						return inList[targetIn].next();
+					}
+				}
+			} else {
+				while(targetIn > 0) {
+					if(inList[-- targetIn].hasNext()) {
+						return inList[targetIn].next();
+					}
+				}
+			}
+			// 存在しない場合は終端をセット.
+			exitFlag = true;
+			throw new NoSuchElementException();
+		}
+
+		@Override
+		public Comparable getValue() {
+			if(exitFlag) {
+				throw new NoSuchElementException();
+			}
+			return inList[targetIn].getValue();
+		}
+
+		@Override
+		public int getLineNo() {
+			if(exitFlag) {
+				throw new NoSuchElementException();
+			}
+			return inList[targetIn].getLineNo();
+		}
+	}
+
 }

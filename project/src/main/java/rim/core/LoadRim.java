@@ -1,4 +1,4 @@
-package rim;
+package rim.core;
 
 import java.io.BufferedInputStream;
 import java.io.FileInputStream;
@@ -7,6 +7,8 @@ import java.io.InputStream;
 import java.util.Date;
 import java.util.zip.GZIPInputStream;
 
+import rim.Rim;
+import rim.RimConstants;
 import rim.compress.CompressBuffer;
 import rim.compress.CompressType;
 import rim.compress.Lz4Compress;
@@ -142,11 +144,12 @@ public class LoadRim {
 			//);
 			
 			// 返却するRimオブジェクトを生成.
-			final Rim ret = new Rim(columns, columnTypes, rowAll, indexLength);
+			final RimBody body = new RimBody(columns, columnTypes, rowAll);
+			final Rim ret = new Rim(body, indexLength);
 			columns = null;
 			
 			// Body情報を取得.
-			readBody(ret, in, params, columnTypes, compressType,
+			readBody(ret, body, in, params, columnTypes, compressType,
 				columnLength, rowAll);
 			columnTypes = null;
 			
@@ -532,15 +535,14 @@ public class LoadRim {
 	}
 
 	// bodyを取得.
-	private static final void readBody(Rim out, InputStream in, RimParams params,
-		ColumnType[] columnTypes, CompressType compressType, int columnLength,
-		int rowAll) throws IOException {
+	private static final void readBody(Rim out, RimBody body, InputStream in,
+		RimParams params, ColumnType[] columnTypes, CompressType compressType,
+		int columnLength, int rowAll) throws IOException {
 		int i, len;
 		byte[] data;
 		Object[] columns;
 		RbInputStream rbIn;
 		final int[] dataLen = new int[1];
-		final RimBody body = out.getBody();
 		for(i = 0; i < columnLength; i ++) {
 			
 			// 圧縮フラグを取得.
@@ -713,22 +715,50 @@ public class LoadRim {
 		
 		Rim rim = load(file);
 		
-		RimBody body = rim.getBody();
-		RimIndex index = rim.getIndex("id");
-		System.out.println("body.length; "+ body.getRowLength());
+		String column = "id";
 		
-		int lineNo;
-		int cnt = 0;
-		final ResultSearch<Integer> ri = index.between(true, 2283, 9998);
+		RimBody body = rim.getBody();
+		RimIndex index = rim.getIndex(column);
+		System.out.println("[index] column: " + column +
+			" body.length; "+ body.getRowLength());
+		
+		int cnt;
+		ResultSearch<Integer> ri;
+		
+		// 昇順・降順フラグ.
+		boolean ascFlg = false;
+		
+		//ri = index.between(ascFlg, 2283, 9998);
+		ri = index.in(ascFlg, 100, 500, 2000, 5000, 9998);
+		
+		cnt = 0;
 		while(ri.hasNext()) {
 			if(cnt > 5) {
 				break;
 			}
-			lineNo = ri.next();
-			System.out.println("(" + cnt + ") value: " + ri.getValue() + " lineNo: " + lineNo + " " +
-				body.getRow(lineNo));
+			ri.next();
+			System.out.println(" (" + cnt + ") value: " + ri.getValue() + " lineNo: " + ri.getLineNo() + " " +
+				body.getRow(ri.getLineNo()));
 			cnt ++;
 		}
 		
+		System.out.println();
+		
+		System.out.println("[body]");
+		
+		//ri = body.between(ascFlg, false, column, 2283, 9998);
+		ri = body.in(ascFlg, false, column, 100, 500, 2000, 5000, 9998);
+		
+		cnt = 0;
+		while(ri.hasNext()) {
+			if(cnt > 5) {
+				break;
+			}
+			ri.next();
+			System.out.println(" (" + cnt + ") value: " + ri.getValue() + " lineNo: " + ri.getLineNo() + " " +
+				body.getRow(ri.getLineNo()));
+			cnt ++;
+		}
+
 	}
 }

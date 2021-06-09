@@ -1,4 +1,4 @@
-package rim;
+package rim.core;
 
 import rim.exception.RimException;
 import rim.util.Alphabet;

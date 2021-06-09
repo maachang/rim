@@ -1,4 +1,4 @@
-package rim;
+package rim.core;
 
 /**
  * 検索ユーティリティ.
@@ -436,8 +436,8 @@ public final class SearchUtil {
 					row = (Object[])rows[i];
 					src = (Comparable)row[columnNo];
 					if(src != null &&
-						(src.compareTo(start) >= 0 &&
-						src.compareTo(end) <= 0) != notEq) {
+						(src.compareTo(start) <= 0 &&
+						src.compareTo(end) >= 0) != notEq) {
 						return i;
 					}
 				}
@@ -487,7 +487,7 @@ public final class SearchUtil {
 			for(int i = startPos; i >= 0; i --) {
 				row = (Object[])rows[i];
 				if((src = (Comparable)row[columnNo]) != null) {
-					for(j = 0; j < valueLength; j ++) {
+					for(j = valueLength - 1; j >= 0; j --) {
 						if((src.compareTo(values[j]) == 0) != notEq) {
 							return i;
 						}

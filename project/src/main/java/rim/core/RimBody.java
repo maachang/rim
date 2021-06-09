@@ -1,4 +1,4 @@
-package rim;
+package rim.core;
 
 import java.util.Arrays;
 import java.util.NoSuchElementException;
@@ -63,6 +63,11 @@ public class RimBody {
 		this.fixFlag = false;
 	}
 	
+	/**
+	 * 指定列番号に対して列情報を設定.
+	 * @param columnNo 列番号を設定します.
+	 * @param columns １つの列の行群情報を設定します.
+	 */
 	protected void setColumns(int columnNo, ObjectList columns) {
 		if(columns == null) {
 			throw new RimException("No columns have been set.");
@@ -80,6 +85,7 @@ public class RimBody {
 	 * @param columns １つの列の行群情報を設定します.
 	 */
 	protected void setColumns(int columnNo, Object[] columns) {
+		checkNoFix();
 		if(columnNo < 0 || columnNo >= columnLength) {
 			throw new RimException("The specified column number (" +
 				columnNo + ") is beyond the scope of the column definition: " + columnLength);
@@ -101,9 +107,24 @@ public class RimBody {
 	}
 	
 	/**
-	 * 追加処理が完了した場合に呼び出します.
+	 * インデックスの作成.
+	 * @param columnNo インデックスの列番号を設定します.
+	 * @param planIndexSize このインデックスの予定長を設定します.
+	 * @return RimIndex 空のRimIndexが返却されます.
 	 */
-	protected void fix() {
+	public final RimIndex createIndex(int columnNo, int planIndexSize) {
+		checkNoFix();
+		return new RimIndex(columnNo,
+			getColumnName(columnNo),
+			getColumnType(columnNo),
+			getRowLength(),
+			planIndexSize);
+	}
+	
+	/**
+	 * Bodyの追加処理がすべて完了した場合に呼び出します.
+	 */
+	public void fix() {
 		if(fixFlag) {
 			return;
 		}
@@ -122,12 +143,22 @@ public class RimBody {
 	 * 行データがすべて追加されたかチェック.
 	 * @return boolean true の場合すべて追加されてます.
 	 */
-	protected boolean isFix() {
+	public boolean isFix() {
 		return fixFlag;
+	}
+	
+	/**
+	 * Body設定が完了している場合例外.
+	 */
+	protected void checkNoFix() {
+		if(isFix()) {
+			throw new RimException(
+				"It cannot be processed because the Body is fixed.");
+		}
 	}
 
 	/**
-	 * 行追加が完了しているかチェック.
+	 * Body設定が完了していない場合例外.
 	 */
 	protected void checkFix() {
 		if(!isFix()) {
@@ -144,8 +175,8 @@ public class RimBody {
 	 *               数字を設定した場合、直接列項番で取得します.
 	 * @return int 列位置が返却されます.
 	 */
-	protected static final int getColumnPos(FixedSearchArray<String> columns,
-		Object column) {
+	protected static final int getColumnPos(
+		FixedSearchArray<String> columns, Object column) {
 		Integer n;
 		if (column == null) {
 			return -1;
@@ -195,6 +226,16 @@ public class RimBody {
 				+ column );
 		}
 		return columnTypes[pos];
+	}
+	
+	/**
+	 * 指定列名を設定して、列番号を取得.
+	 * @param name 列名を設定します.
+	 * @return int 列番号が返却されます.
+	 *             存在しない場合は-1.
+	 */
+	public int getColumnNo(String name) {
+		return columns.search(name);
 	}
 	
 	/**
@@ -288,7 +329,7 @@ public class RimBody {
 
 		@Override
 		public Comparable getValue() {
-			return (Comparable)normalSearch.getValue();
+			return normalSearch.getValue();
 		}
 
 		@Override
@@ -388,11 +429,11 @@ public class RimBody {
 		 * 現在取得されている行番号の要素を取得.
 		 * @return
 		 */
-		public Object getValue() {
+		public Comparable getValue() {
 			if(endFlag) {
 				throw new NoSuchElementException();
 			}
-			return ((Object[])rows[position])[columnNo];
+			return (Comparable)((Object[])rows[position])[columnNo];
 		}
 		
 		/**
@@ -407,6 +448,7 @@ public class RimBody {
 		private Comparable value;
 		NormalSearchEq(RimBody body, boolean ascFlag, boolean notEq, int columnNo,
 			Object value) {
+			// valueがnullの場合は例外.
 			if(value == null) {
 				throw new RimException("Null cannot be set in the search condition.");
 			}
@@ -429,6 +471,7 @@ public class RimBody {
 		private Comparable value;
 		NormalSearchGT(RimBody body, boolean ascFlag, boolean notEq, int columnNo,
 			Object value) {
+			// valueがnullの場合は例外.
 			if(value == null) {
 				throw new RimException("Null cannot be set in the search condition.");
 			}
@@ -450,6 +493,7 @@ public class RimBody {
 		private Comparable value;
 		NormalSearchGE(RimBody body, boolean ascFlag, boolean notEq, int columnNo,
 			Object value) {
+			// valueがnullの場合は例外.
 			if(value == null) {
 				throw new RimException("Null cannot be set in the search condition.");
 			}
@@ -471,6 +515,7 @@ public class RimBody {
 		private Comparable value;
 		NormalSearchLT(RimBody body, boolean ascFlag, boolean notEq, int columnNo,
 			Object value) {
+			// valueがnullの場合は例外.
 			if(value == null) {
 				throw new RimException("Null cannot be set in the search condition.");
 			}
@@ -492,6 +537,7 @@ public class RimBody {
 		private Comparable value;
 		NormalSearchLE(RimBody body, boolean ascFlag, boolean notEq, int columnNo,
 			Object value) {
+			// valueがnullの場合は例外.
 			if(value == null) {
 				throw new RimException("Null cannot be set in the search condition.");
 			}
@@ -514,6 +560,7 @@ public class RimBody {
 		private Comparable end;
 		NormalSearchBetween(RimBody body, boolean ascFlag, boolean notEq, int columnNo,
 			Object start, Object end) {
+			// start や end がnullの場合は例外.
 			if(start == null || end == null) {
 				throw new RimException("Null cannot be set in the search condition.");
 			}
@@ -534,9 +581,10 @@ public class RimBody {
 			if(endFlag) {
 				return -1;
 			}
-			return SearchUtil.normalBetween(
-				rows, columnNo, notEq, ascFlag, nextPosition(),
+			int ret = SearchUtil.normalBetween(
+				rows, columnNo, ascFlag, notEq, nextPosition(),
 				start, end);
+			return ret;
 		}
 	}
 	
@@ -546,17 +594,21 @@ public class RimBody {
 		NormalSearchIn(RimBody body, boolean ascFlag, boolean notEq, int columnNo,
 			Object... values) {
 			final int len = values.length;
+			// valuesが設定されていない場合は例外.
 			if(len == 0) {
 				throw new RimException("At least one condition must be set.");
 			}
 			Comparable[] inList = new Comparable[len];
 			this.init(body, ascFlag, notEq, columnNo);
 			for(int i = 0; i < len; i ++) {
+				values[i] = super.convert(values[i]);
+				// valuesのどれかがnullの場合は例外.
 				if(values[i] == null) {
 					throw new RimException("Null cannot be set in the search condition.");
 				}
-				inList[i] = super.convert(values[i]);
+				inList[i] = (Comparable)values[i];
 			}
+			Arrays.sort(inList);
 			this.inList = inList;
 		}
 		@Override
@@ -565,7 +617,7 @@ public class RimBody {
 				return -1;
 			}
 			return SearchUtil.normalIn(
-				rows, columnNo, notEq, ascFlag, nextPosition(), inList);
+				rows, columnNo, ascFlag, notEq, nextPosition(), inList);
 		}
 	}
 	
@@ -574,8 +626,10 @@ public class RimBody {
 		private LikeParser parser;
 		NormalSearchLike(RimBody body, boolean ascFlag, boolean notEq, int columnNo,
 			String value) {
+			// valueがnullの場合は例外.
 			if(value == null) {
 				throw new RimException("Null cannot be set in the search condition.");
+			// 対象列型がStringでない場合は例外.
 			} else if(body.getColumnType(columnNo) != ColumnType.String) {
 				throw new RimException("The column type of the specified row \"" +
 					body.getColumnName(columnNo) + "\" is not a String. ");
@@ -586,6 +640,7 @@ public class RimBody {
 		}
 		private final void init(RimBody body, boolean ascFlag, boolean notEq, int columnNo,
 			LikeParser parser) {
+			// valueがnullの場合は例外.
 			if(parser == null) {
 				throw new RimException("Null cannot be set in the search condition.");
 			}
@@ -620,7 +675,7 @@ public class RimBody {
 	 * @param value 条件を設定します.
 	 * @return SearchResult<Integer> 検索結果が返却されます.
 	 */
-	protected ResultSearch<Integer> eq(boolean ascFlag,  boolean notEq,
+	public ResultSearch<Integer> eq(boolean ascFlag,  boolean notEq,
 		String columnName, Object value) {
 		return eq(ascFlag, notEq, getColumnNameByNo(columnName), value);
 	}
@@ -633,7 +688,7 @@ public class RimBody {
 	 * @param value 条件を設定します.
 	 * @return SearchResult<Integer> 検索結果が返却されます.
 	 */
-	protected ResultSearch<Integer> eq(boolean ascFlag,  boolean notEq,
+	public ResultSearch<Integer> eq(boolean ascFlag,  boolean notEq,
 		int columnNo, Object value) {
 		checkFix();
 		return new ResultSearchBody(new NormalSearchEq(
@@ -648,7 +703,7 @@ public class RimBody {
 	 * @param value 条件を設定します.
 	 * @return SearchResult<Integer> 検索結果が返却されます.
 	 */
-	protected ResultSearch<Integer> gt(boolean ascFlag, boolean notEq,
+	public ResultSearch<Integer> gt(boolean ascFlag, boolean notEq,
 		String columnName, Object value) {
 		return gt(ascFlag, notEq, getColumnNameByNo(columnName), value);
 	}
@@ -661,7 +716,7 @@ public class RimBody {
 	 * @param value 条件を設定します.
 	 * @return SearchResult<Integer> 検索結果が返却されます.
 	 */
-	protected ResultSearch<Integer> gt(boolean ascFlag, boolean notEq,
+	public ResultSearch<Integer> gt(boolean ascFlag, boolean notEq,
 		int columnNo, Object value) {
 		checkFix();
 		return new ResultSearchBody(new NormalSearchGT(
@@ -676,7 +731,7 @@ public class RimBody {
 	 * @param value 条件を設定します.
 	 * @return SearchResult<Integer> 検索結果が返却されます.
 	 */
-	protected ResultSearch<Integer> ge(boolean ascFlag, boolean notEq,
+	public ResultSearch<Integer> ge(boolean ascFlag, boolean notEq,
 		String columnName, Object value) {
 		return ge(ascFlag, notEq, getColumnNameByNo(columnName), value);
 	}
@@ -689,7 +744,7 @@ public class RimBody {
 	 * @param value 条件を設定します.
 	 * @return SearchResult<Integer> 検索結果が返却されます.
 	 */
-	protected ResultSearch<Integer> ge(boolean ascFlag, boolean notEq,
+	public ResultSearch<Integer> ge(boolean ascFlag, boolean notEq,
 		int columnNo, Object value) {
 		checkFix();
 		return new ResultSearchBody(new NormalSearchGE(
@@ -704,7 +759,7 @@ public class RimBody {
 	 * @param value 条件を設定します.
 	 * @return SearchResult<Integer> 検索結果が返却されます.
 	 */
-	protected ResultSearch<Integer> lt(boolean ascFlag, boolean notEq,
+	public ResultSearch<Integer> lt(boolean ascFlag, boolean notEq,
 		String columnName, Object value) {
 		return lt(ascFlag, notEq, getColumnNameByNo(columnName), value);
 	}
@@ -717,7 +772,7 @@ public class RimBody {
 	 * @param value 条件を設定します.
 	 * @return SearchResult<Integer> 検索結果が返却されます.
 	 */
-	protected ResultSearch<Integer> lt(boolean ascFlag, boolean notEq,
+	public ResultSearch<Integer> lt(boolean ascFlag, boolean notEq,
 		int columnNo, Object value) {
 		checkFix();
 		return new ResultSearchBody(new NormalSearchLT(
@@ -732,7 +787,7 @@ public class RimBody {
 	 * @param value 条件を設定します.
 	 * @return SearchResult<Integer> 検索結果が返却されます.
 	 */
-	protected ResultSearch<Integer> le(boolean ascFlag, boolean notEq,
+	public ResultSearch<Integer> le(boolean ascFlag, boolean notEq,
 		String columnName, Object value) {
 		return le(ascFlag, notEq, getColumnNameByNo(columnName), value);
 	}
@@ -745,7 +800,7 @@ public class RimBody {
 	 * @param value 条件を設定します.
 	 * @return SearchResult<Integer> 検索結果が返却されます.
 	 */
-	protected ResultSearch<Integer> le(boolean ascFlag, boolean notEq,
+	public ResultSearch<Integer> le(boolean ascFlag, boolean notEq,
 		int columnNo, Object value) {
 		checkFix();
 		return new ResultSearchBody(new NormalSearchLE(
@@ -761,7 +816,7 @@ public class RimBody {
 	 * @param end 終了条件を設定します.
 	 * @return SearchResult<Integer> 検索結果が返却されます.
 	 */
-	protected ResultSearch<Integer> between(
+	public ResultSearch<Integer> between(
 		boolean ascFlag, boolean notEq, String columnName, Object start, Object end) {
 		return between(ascFlag, notEq, getColumnNameByNo(columnName), start, end);
 	}
@@ -775,7 +830,7 @@ public class RimBody {
 	 * @param end 終了条件を設定します.
 	 * @return SearchResult<Integer> 検索結果が返却されます.
 	 */
-	protected ResultSearch<Integer> between(
+	public ResultSearch<Integer> between(
 		boolean ascFlag, boolean notEq, int columnNo, Object start, Object end) {
 		checkFix();
 		return new ResultSearchBody(new NormalSearchBetween(
@@ -790,7 +845,7 @@ public class RimBody {
 	 * @param values 一致条件を複数設定します.
 	 * @return SearchResult<Integer> 検索結果が返却されます.
 	 */
-	protected ResultSearch<Integer> in(
+	public ResultSearch<Integer> in(
 		boolean ascFlag, boolean notEq, String columnName, Object... values) {
 		return in(ascFlag, notEq, getColumnNameByNo(columnName), values);
 	}
@@ -803,7 +858,7 @@ public class RimBody {
 	 * @param values 一致条件を複数設定します.
 	 * @return SearchResult<Integer> 検索結果が返却されます.
 	 */
-	protected ResultSearch<Integer> in(
+	public ResultSearch<Integer> in(
 		boolean ascFlag, boolean notEq, int columnNo, Object... values) {
 		checkFix();
 		return new ResultSearchBody(new NormalSearchIn(
@@ -818,7 +873,7 @@ public class RimBody {
 	 * @param value 条件を設定します.
 	 * @return SearchResult<Integer> 検索結果が返却されます.
 	 */
-	protected ResultSearch<Integer> like(boolean ascFlag, boolean notEq,
+	public ResultSearch<Integer> like(boolean ascFlag, boolean notEq,
 		String columnName, String value) {
 		return like(ascFlag, notEq, getColumnNameByNo(columnName), value);
 	}
@@ -831,7 +886,7 @@ public class RimBody {
 	 * @param value 条件を設定します.
 	 * @return SearchResult<Integer> 検索結果が返却されます.
 	 */
-	protected ResultSearch<Integer> like(boolean ascFlag, boolean notEq,
+	public ResultSearch<Integer> like(boolean ascFlag, boolean notEq,
 		int columnNo, String value) {
 		checkFix();
 		return new ResultSearchBody(new NormalSearchLike(

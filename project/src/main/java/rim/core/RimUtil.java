@@ -1,4 +1,4 @@
-package rim;
+package rim.core;
 
 /**
  * Rim-Util.
