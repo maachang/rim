@@ -14,7 +14,6 @@ import rim.compress.CompressType;
 import rim.compress.Lz4Compress;
 import rim.compress.ZstdCompress;
 import rim.exception.RimException;
-import rim.util.FileUtil;
 import rim.util.UTF8IO;
 import rim.util.seabass.SeabassCompress;
 import rim.util.seabass.SeabassCompressBuffer;
@@ -677,7 +676,13 @@ public class LoadRim {
 		}
 	}
 	
-	// 対象ファイルのロード時間を計測.
+	// test.
+	public static final void main(String[] args) throws Exception {
+		testSearch(args);
+	}
+	
+	/*
+	// [テスト用]対象ファイルのロード時間を計測.
 	protected static final void testLoadTime(String[] args) throws Exception {
 		String loadFileName;
 		
@@ -708,12 +713,15 @@ public class LoadRim {
 		
 		System.exit(0);
 	}
+	*/
 	
-	// テスト用ロード時間を計測する.
-	public static final void main(String[] args) throws Exception {
+	// [テスト用]検索関連のテスト.
+	public static final void testSearch(String[] args) throws Exception {
 		String file = "Z:/home/maachang/project/rim/sampleData/race_horse_master.rim";
 		
 		Rim rim = load(file);
+		
+		int viweLen = 5;
 		
 		int execType = 0;
 		
@@ -721,7 +729,7 @@ public class LoadRim {
 		String column = "id";
 		
 		// 昇順・降順フラグ.
-		boolean ascFlg = true;
+		boolean ascFlag = true;
 		
 		// notフラグ.
 		boolean notFlag = false;
@@ -730,148 +738,189 @@ public class LoadRim {
 		
 		for(int x = 0; x < 7; x ++) {
 		for(int y = 0; y <= 1; y ++) {
+		for(int z = 0; z <= 1; z ++) {
 		
 		execType = x;
-		ascFlg = y == 0;
+		notFlag = y != 0;
+		//notFlag = true;
+		ascFlag = z == 0;
 		
 		RimBody body = rim.getBody();
 		RimIndex index = rim.getIndex(column);
 		
 		ResultSearch<Integer> ri;
 		
-		System.out.println();
-		
-		System.out.println("[index] column: " + column + " exec: " + execTypeName(execType) + " ascFlg: " + ascFlg);
-		
 		ri = null;
 		switch(execType) {
 		case 0:
-			values = new Object[] {
-				100
-			};
-			System.out.println("eq(ascFlg: " + ascFlg + " notFlg: " + notFlag +
+			// a[t]n[f]: 3
+			// a[t]n[t]: 3
+			// a[f]n[f]: 2284
+			// a[f]n[t]: 2284
+			values = setValue(ascFlag, notFlag, 3, 3, 2283, 2283);
+			
+			System.out.println("[index]eq(ascFlag: " + ascFlag + " notFlag: " + notFlag +
 				" column: " + column + " value: " + strAry(values));
-			ri = index.eq(ascFlg, values[0]);
+			ri = index.eq(ascFlag, notFlag, values[0]);
+			
+			viewResultSearch(ri, body, viweLen);
+			System.out.println();
+			
+			System.out.println("[body] eq(ascFlag: " + ascFlag + " notFlag: " + notFlag +
+				" column: " + column + " value: " + strAry(values));
+			ri = body.eq(ascFlag, notFlag, column, values[0]);
+			
+			viewResultSearch(ri, body, viweLen);
+			System.out.println();
+			
 			break;
 		case 1:
-			values = new Object[] {
-				2284
-			};
-			System.out.println("gt(ascFlg: " + ascFlg + " notFlg: " + notFlag +
+			// a[t]n[f]: 3
+			// a[t]n[t]: 3
+			// a[f]n[f]: 2284
+			// a[f]n[t]: 2284
+			values = setValue(ascFlag, notFlag, 3, 3, 2284, 2284);
+			
+			System.out.println("[index]gt(ascFlag: " + ascFlag + " notFlag: " + notFlag +
 				" column: " + column + " value: " + strAry(values));
-			ri = index.gt(ascFlg, values[0]);
+			ri = index.gt(ascFlag, notFlag, values[0]);
+			
+			viewResultSearch(ri, body, viweLen);
+			System.out.println();
+			
+			System.out.println("[body] gt(ascFlag: " + ascFlag + " notFlag: " + notFlag +
+				" column: " + column + " value: " + strAry(values));
+			ri = body.gt(ascFlag, notFlag, column, values[0]);
+			
+			viewResultSearch(ri, body, viweLen);
+			System.out.println();
+			
 			break;
 		case 2:
-			values = new Object[] {
-				2284
-			};
-			System.out.println("ge(ascFlg: " + ascFlg + " notFlg: " + notFlag +
+			// a[t]n[f]: 3
+			// a[t]n[t]: 3
+			// a[f]n[f]: 2284
+			// a[f]n[t]: 2284
+			values = setValue(ascFlag, notFlag, 3, 3, 2284, 2284);
+			
+			System.out.println("[index]ge(ascFlag: " + ascFlag + " notFlag: " + notFlag +
 				" column: " + column + " value: " + strAry(values));
-			ri = index.ge(ascFlg, values[0]);
+			ri = index.ge(ascFlag, notFlag, values[0]);
+			
+			viewResultSearch(ri, body, viweLen);
+			System.out.println();
+			
+			System.out.println("[body] ge(ascFlag: " + ascFlag + " notFlag: " + notFlag +
+				" column: " + column + " value: " + strAry(values));
+			ri = body.ge(ascFlag, notFlag, column, values[0]);
+			
+			viewResultSearch(ri, body, viweLen);
+			System.out.println();
+			
 			break;
 		case 3:
-			values = new Object[] {
-				4
-			};
-			System.out.println("lt(ascFlg: " + ascFlg + " notFlg: " + notFlag +
+			// a[t]n[f]: 3
+			// a[t]n[t]: 3
+			// a[f]n[f]: 2284
+			// a[f]n[t]: 2284
+			values = setValue(ascFlag, notFlag, 3, 3, 2284, 2284);
+			
+			System.out.println("[index]lt(ascFlag: " + ascFlag + " notFlag: " + notFlag +
 				" column: " + column + " value: " + strAry(values));
-			ri = index.lt(ascFlg, values[0]);
+			ri = index.lt(ascFlag, notFlag, values[0]);
+			
+			viewResultSearch(ri, body, viweLen);
+			System.out.println();
+			
+			System.out.println("[body] lt(ascFlag: " + ascFlag + " notFlag: " + notFlag +
+				" column: " + column + " value: " + strAry(values));
+			ri = body.lt(ascFlag, notFlag, column, values[0]);
+			
+			viewResultSearch(ri, body, viweLen);
+			System.out.println();
+			
 			break;
 		case 4:
-			values = new Object[] {
-				4
-			};
-			System.out.println("le(ascFlg: " + ascFlg + " notFlg: " + notFlag +
+			// a[t]n[f]: 3
+			// a[t]n[t]: 3
+			// a[f]n[f]: 2284
+			// a[f]n[t]: 2284
+			values = setValue(ascFlag, notFlag, 3, 3, 2284, 2284);
+			
+			System.out.println("[index]le(ascFlag: " + ascFlag + " notFlag: " + notFlag +
 				" column: " + column + " value: " + strAry(values));
-			ri = index.le(ascFlg, values[0]);
+			ri = index.le(ascFlag, notFlag, values[0]);
+			
+			viewResultSearch(ri, body, viweLen);
+			System.out.println();
+			
+			System.out.println("[body] le(ascFlag: " + ascFlag + " notFlag: " + notFlag +
+				" column: " + column + " value: " + strAry(values));
+			ri = body.le(ascFlag, notFlag, column, values[0]);
+			
+			viewResultSearch(ri, body, viweLen);
+			System.out.println();
+			
 			break;
 		case 5:
-			values = new Object[] {
-				2283, 9998
-			};
-			System.out.println("between(ascFlg: " + ascFlg + " notFlg: " + notFlag +
+			// a[t]n[f]: {3, 5}
+			// a[t]n[t]: {3, 5}
+			// a[f]n[f]: {2283, 9998}
+			// a[f]n[t]: {2283, 9998}
+			values = (Object[])(setValue(ascFlag, notFlag,
+				new Object[] {3, 5},
+				new Object[] {3, 5},
+				new Object[] {2283, 9998},
+				new Object[] {2283, 9998}
+			)[0]);
+			
+			System.out.println("[index]between(ascFlag: " + ascFlag + " notFlag: " + notFlag +
 				" column: " + column + " value: " + strAry(values));
-			ri = index.between(ascFlg, values[0], values[1]);
+			
+			ri = index.between(ascFlag, notFlag, values[0], values[1]);
+			
+			viewResultSearch(ri, body, viweLen);
+			System.out.println();
+			
+			System.out.println("[body] between(ascFlag: " + ascFlag + " notFlag: " + notFlag +
+				" column: " + column + " value: " + strAry(values));
+			ri = body.between(ascFlag, notFlag, column, values[0], values[1]);
+			
+			viewResultSearch(ri, body, viweLen);
+			System.out.println();
+			
 			break;
 		case 6:
-			values = new Object[] {
-				100, 500, 2000, 5000, 9998
-			};
-			System.out.println("in(ascFlg: " + ascFlg + " notFlg: " + notFlag +
+			// a[t]n[f]: {1, 3,-30, 5, 1000}
+			// a[t]n[t]: {3, 5}
+			// a[f]n[f]: {1, 3,-30, 5, 1000}
+			// a[f]n[t]: {2283, 9998}
+			values = (Object[])(setValue(ascFlag, notFlag,
+				new Object[] {1, 3,-30, 5, 1000},
+				new Object[] {2, 4, 6, 8, 10},
+				new Object[] {1, 3,-30, 5, 1000},
+				new Object[] {9998, 2283, 2281, 2279, 2277}
+			)[0]);
+			
+			System.out.println("[index]in(ascFlag: " + ascFlag + " notFlag: " + notFlag +
 				" column: " + column + " value: " + strAry(values));
-			ri = index.in(ascFlg, values);
+			ri = index.in(ascFlag, notFlag, values);
+			
+			viewResultSearch(ri, body, viweLen);
+			System.out.println();
+			
+			System.out.println("[body] in(ascFlag: " + ascFlag + " notFlag: " + notFlag +
+				" column: " + column + " value: " + strAry(values));
+			ri = body.in(ascFlag, notFlag, column, values);
+			
+			viewResultSearch(ri, body, viweLen);
+			System.out.println();
+			
 			break;
 		}
-		viewResultSearch(ri, body, 5);
 		
-		System.out.println();
-		
-		System.out.println("[body] column: " + column + " exec: " + execTypeName(execType) + " ascFlg: " + ascFlg);
-		
-		ri = null;
-		switch(execType) {
-		case 0:
-			values = new Object[] {
-				100
-			};
-			System.out.println("eq(ascFlg: " + ascFlg + " notFlg: " + notFlag +
-				" column: " + column + " value: " + strAry(values));
-			ri = body.eq(ascFlg, notFlag, column, values[0]);
-			break;
-		case 1:
-			values = new Object[] {
-				2284
-			};
-			System.out.println("gt(ascFlg: " + ascFlg + " notFlg: " + notFlag +
-				" column: " + column + " value: " + strAry(values));
-			ri = body.gt(ascFlg, notFlag, column, values[0]);
-			break;
-		case 2:
-			values = new Object[] {
-				2284
-			};
-			System.out.println("ge(ascFlg: " + ascFlg + " notFlg: " + notFlag +
-				" column: " + column + " value: " + strAry(values));
-			ri = body.ge(ascFlg, notFlag, column, values[0]);
-			break;
-		case 3:
-			values = new Object[] {
-				4
-			};
-			System.out.println("lt(ascFlg: " + ascFlg + " notFlg: " + notFlag +
-				" column: " + column + " value: " + strAry(values));
-			ri = body.lt(ascFlg, notFlag, column, values[0]);
-			break;
-		case 4:
-			values = new Object[] {
-				4
-			};
-			System.out.println("le(ascFlg: " + ascFlg + " notFlg: " + notFlag +
-				" column: " + column + " value: " + strAry(values));
-			ri = body.le(ascFlg, notFlag, column, values[0]);
-			break;
-		case 5:
-			values = new Object[] {
-				2283, 9998
-			};
-			System.out.println("between(ascFlg: " + ascFlg + " notFlg: " + notFlag +
-				" column: " + column + " value: " + strAry(values));
-			ri = body.between(ascFlg, notFlag, column, values[0], values[1]);
-			break;
-		case 6:
-			values = new Object[] {
-				100, 500, 2000, 5000, 9998
-			};
-			System.out.println("in(ascFlg: " + ascFlg + " notFlg: " + notFlag +
-				" column: " + column + " value: " + strAry(values));
-			ri = body.in(ascFlg, notFlag, column, values);
-			break;
-		}
-		viewResultSearch(ri, body, 5);
-		
-		System.out.println();
-		
-		}}
+		}}}
+		//}}
 	}
 	
 	private static final void viewResultSearch(ResultSearch<Integer> ri, RimBody body, int maxCnt) {
@@ -888,6 +937,7 @@ public class LoadRim {
 		}
 	}
 	
+	/**
 	private static final String execTypeName(int no) {
 		switch(no) {
 		case 0: return "eq";
@@ -899,6 +949,34 @@ public class LoadRim {
 		case 6: return "in";
 		}
 		return "unknown";
+	}
+	**/
+	
+	private static final Object[] setValue(boolean ascFlag, boolean notFlag,
+		Object atnf, Object atnt, Object afnf, Object afnt) {
+		Object[] values;
+		if(ascFlag) {
+			if(notFlag) {
+				values = new Object[] {
+					atnt
+				};
+			} else {
+				values = new Object[] {
+					atnf
+				};
+			}
+		} else {
+			if(notFlag) {
+				values = new Object[] {
+					afnt
+				};
+			} else {
+				values = new Object[] {
+					afnf
+				};
+			}
+		}
+		return values;
 	}
 	
 	private static final String strAry(Object[] ary) {

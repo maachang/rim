@@ -463,8 +463,9 @@ public final class SearchUtil {
 		final boolean notEq, final int startPos, final Comparable... values) {
 		int j;
 		Object[] row;
-		final int len = rows.length;
 		Comparable src;
+		boolean eqFlag = false;
+		final int len = rows.length;
 		
 		// inで設定される一致条件が存在しない場合.
 		final int valueLength = values.length;
@@ -472,25 +473,47 @@ public final class SearchUtil {
 			// 処理しない.
 			return -1;
 		}
+		// 昇順.
 		if(ascFlag) {
 			for(int i = startPos; i < len; i ++) {
 				row = (Object[])rows[i];
 				if((src = (Comparable)row[columnNo]) != null) {
+					eqFlag = false;
 					for(j = 0; j < valueLength; j ++) {
-						if((src.compareTo(values[j]) == 0) != notEq) {
-							return i;
+						if(src.compareTo(values[j]) == 0) {
+							// 通常検索の場合.
+							if(!notEq) {
+								return i;
+							}
+							// 一致.
+							eqFlag = true;
 						}
+					}
+					// not 検索でin 条件全部が不一致の場合.
+					if(!eqFlag && notEq) {
+						return i;
 					}
 				}
 			}
+		// 降順.
 		} else {
 			for(int i = startPos; i >= 0; i --) {
 				row = (Object[])rows[i];
 				if((src = (Comparable)row[columnNo]) != null) {
+					eqFlag = false;
 					for(j = valueLength - 1; j >= 0; j --) {
-						if((src.compareTo(values[j]) == 0) != notEq) {
-							return i;
+						if(src.compareTo(values[j]) == 0) {
+							// 通常検索の場合.
+							if(!notEq) {
+								return i;
+							}
+							// 一致.
+							eqFlag = true;
 						}
+					}
+					// not 検索でin 条件全部が不一致の場合.
+					if(!eqFlag && notEq) {
+						return i;
 					}
 				}
 			}
@@ -516,6 +539,7 @@ public final class SearchUtil {
 		Object[] row;
 		final int len = rows.length;
 		String src;
+		// 昇順.
 		if(ascFlag) {
 			for(int i = startPos; i < len; i ++) {
 				row = (Object[])rows[i];
@@ -525,6 +549,7 @@ public final class SearchUtil {
 					return i;
 				}
 			}
+		// 降順.
 		} else {
 			for(int i = startPos; i >= 0; i --) {
 				row = (Object[])rows[i];
