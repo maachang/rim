@@ -805,33 +805,37 @@ public class RimIndex {
 		 */
 		public ResultSearchIndexNot(boolean ascFlag, RimIndex rimIndex, int indexPos,
 			int exclusionStart, int exclusionEnd) {
-			this.rimIndex = rimIndex;
-			this.indexPos = indexPos;
-			this.ascFlag = ascFlag;
-			this.exclusionStart = exclusionStart;
-			this.exclusionEnd = exclusionEnd;
-			
 			// 指定されたインデックス位置が除外番号範囲の場合.
 			if(ascFlag) {
 				// 昇順.
-				if(this.indexPos >= this.exclusionStart &&
-					this.indexPos <= this.exclusionEnd) {
-					this.indexPos = this.exclusionEnd + 1;
+				if(indexPos >= exclusionStart &&
+					indexPos <= exclusionEnd) {
+					indexPos = exclusionEnd + 1;
 				}
 			} else {
 				// 降順.
-				if(this.indexPos <= this.exclusionStart &&
-					this.indexPos >= this.exclusionEnd) {
-					this.indexPos = this.exclusionEnd - 1;
+				if(indexPos <= exclusionStart &&
+					indexPos >= exclusionEnd) {
+					indexPos = exclusionEnd - 1;
 				}
 			}
 			
 			// posが範囲外の場合はnullが返却される.
-			this.element = rimIndex.getRimIndexElement(this.indexPos);
+			int elementPos = -1;
+			final RimIndexElement element = rimIndex.getRimIndexElement(indexPos);
 			// nullでない場合は、要素の開始位置をセット.
-			if(this.element != null) {
-				this.elementPos = ascFlag ? 0 : this.element.getLineLength() - 1;
+			if(element != null) {
+				elementPos = ascFlag ? 0 : element.getLineLength() - 1;
 			}
+			
+			// データーセット.
+			this.rimIndex = rimIndex;
+			this.indexPos = indexPos;
+			this.element = element;
+			this.elementPos = elementPos;
+			this.ascFlag = ascFlag;
+			this.exclusionStart = exclusionStart;
+			this.exclusionEnd = exclusionEnd;
 		}
 		
 		// 次の情報を読み込む.
