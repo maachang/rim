@@ -4,7 +4,6 @@ import java.util.Arrays;
 import java.util.NoSuchElementException;
 
 import rim.exception.RimException;
-import rim.util.Flags;
 import rim.util.ObjectList;
 
 /**
@@ -653,19 +652,21 @@ public class RimIndex {
 		 */
 		public ResultSearchIndex(boolean nextFlag, boolean ascFlag, RimIndex rimIndex,
 			int indexPos, ResultEnd resultEnd) {
-			this.nextFlag = nextFlag;
-			this.rimIndex = rimIndex;
-			this.indexPos = indexPos;
-			
 			// posが範囲外の場合はnullが返却される.
-			this.element = rimIndex.getRimIndexElement(indexPos);
+			int elementPos = -1;
+			final RimIndexElement element = rimIndex.getRimIndexElement(indexPos);
 			// nullでない場合は、要素の開始位置をセット.
 			if(element != null) {
-				this.elementPos = ascFlag ? 0 : element.getLineLength() - 1;
+				elementPos = ascFlag ? 0 : element.getLineLength() - 1;
 			}
-			this.ascFlag = ascFlag;
 			
-			// 読み込み終了条件を設定します.
+			// データーセット.
+			this.rimIndex = rimIndex;
+			this.indexPos = indexPos;
+			this.element = element;
+			this.elementPos = elementPos;
+			this.ascFlag = ascFlag;
+			this.nextFlag = nextFlag;
 			this.resultEnd = resultEnd;
 		}
 		
@@ -890,13 +891,6 @@ public class RimIndex {
 			}
 			return true;
 		}
-		
-		// 指定位置が除外範囲の条件の場合.
-		//private final int getNextIndexPos(int indexPos, int off) {
-		//	return (ascFlag && indexPos + off >= exclusionStart && indexPos + off <= exclusionEnd) ||
-		//		(!ascFlag && indexPos - off <= exclusionStart && indexPos - off >= exclusionEnd) ?
-		//		exclusionEnd : indexPos;
-		//}
 
 		@Override
 		public boolean hasNext() {
@@ -946,7 +940,7 @@ public class RimIndex {
 		// このインデックス管理情報.
 		private RimIndex rimIndex;
 		// not in 条件.
-		private Flags notInPositions;
+		private RowsFlag notInPositions;
 		// 現在の読み込み中行番号.
 		private int indexPos;
 		// 現在取得中のIndex要素.
@@ -993,7 +987,7 @@ public class RimIndex {
 				final RimIndexElement[] fixIndex = rimIndex.fixIndex;
 				
 				// not検索の場合はin条件は行番号で処理する.
-				final Flags notInPositions = new Flags(fixIndex.length);
+				final RowsFlag notInPositions = new RowsFlag(fixIndex.length);
 				
 				// valueを列型変換して行番号を取得.
 				for(i = 0; i < len; i ++) {
@@ -1003,6 +997,7 @@ public class RimIndex {
 						notInPositions.put(pos, true);
 					}
 				}
+				
 				// 生成できた場合は情報セット.
 				this.rimIndex = rimIndex;
 				this.notInPositions = notInPositions;
@@ -1045,7 +1040,8 @@ public class RimIndex {
 				this.inList = inList;
 				this.targetIn = targetIn;
 			}
-			// 生成できた場合は情報セット.
+			
+			// データーセット.
 			this.ascFlag = ascFlag;
 			this.notFlag = notEq;
 			this.exitFlag = false;
