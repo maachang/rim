@@ -240,6 +240,12 @@ public final class GeoQuad {
 		return key | (0x7fffffffffffffffL & ((1L <<
 			(long)((MAX_DETAIL - detail) << 1)) - 1L));
 	}
+	
+	/**
+	 * 範囲検索用QuadKeyの範囲を格納する配列長
+	 * (奇数: 最小値, 偶数: 最大値 の 9条件 合計18個).
+	 */
+	public static final int SEARCH_QUAD_KEY_LENGTH = 18;
 
 	/**
 	 * 範囲検索用データの作成.
@@ -328,7 +334,7 @@ public final class GeoQuad {
 	 */
 	public static final long[] searchCode(final int detail, final double lat,
 		final double lon) {
-		final long[] ret = new long[18];
+		final long[] ret = new long[SEARCH_QUAD_KEY_LENGTH];
 		searchCode(ret, detail, lat, lon);
 		return ret;
 	}

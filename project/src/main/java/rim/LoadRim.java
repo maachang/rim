@@ -767,10 +767,11 @@ public class LoadRim {
 		int benchLen = 100;
 		
 		boolean ascFlag = true;
+		
 		// 東京タワーの周辺を検索.
 		double lat = 35.658581;
 		double lon = 139.745433;
-		int distance = 5000;
+		int distance = 1000000;
 		
 		RimResultGeo result;
 		
@@ -778,21 +779,23 @@ public class LoadRim {
 		long all = 0L;
 		for(int i = 0; i < benchLen; i ++) {
 			time = System.currentTimeMillis();
-			result = index.searchRadius(ascFlag, lat, lon, distance);
-			//result = index.searchRadius(lat, lon, distance);
+			//result = index.searchRadius(ascFlag, lat, lon, distance);
+			result = index.searchRadius(lat, lon, distance);
 			while(result.hasNext()) {
 				result.next();
 			}
 			all += System.currentTimeMillis() - time;
 		}
 		
-		result = index.searchRadius(ascFlag, lat, lon, distance);
-		//result = index.searchRadius(lat, lon, distance);
+		//result = index.searchRadius(ascFlag, lat, lon, distance);
+		result = index.searchRadius(lat, lon, distance);
 		
 		int cnt = 0;
 		while(result.hasNext()) {
-			System.out.println("nextRow: " + result.nextRow());
-			System.out.println(" distance : " + result.getValue() + " m");
+			result.next();
+			//System.out.println("nextRow: " + result.nextRow());
+			//System.out.println(" distance: " + result.getValue() +
+			//	" / " + result.getStrictRedius() + " m");
 			cnt ++;
 		}
 		System.out.println("駅 :" + cnt + " 件");

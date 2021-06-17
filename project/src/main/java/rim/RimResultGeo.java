@@ -17,4 +17,10 @@ public interface RimResultGeo
 	 * @return double 経度が返却されます.
 	 */
 	public double getLon();
+	
+	/**
+	 * 厳密な半径を再計算.
+	 * @return double 厳密な半径を計算して返却されます.
+	 */
+	public double getStrictRedius();
 }

@@ -9,6 +9,7 @@ import rim.core.ColumnType;
 import rim.core.SearchUtil;
 import rim.exception.RimException;
 import rim.geo.GeoFastLine;
+import rim.geo.GeoLine;
 import rim.geo.GeoQuad;
 import rim.util.IndexKeyList;
 import rim.util.ObjectList;
@@ -18,7 +19,7 @@ import rim.util.ObjectList;
  */
 @SuppressWarnings("rawtypes")
 public class RimGeoIndex {
-	// インデックス型(long).
+	// GeoQuadインデックス型(long).
 	private static final ColumnType VALUE_TYPE = ColumnType.Long;
 	
 	// RimBody.
@@ -200,7 +201,6 @@ public class RimGeoIndex {
 			);
 	}
 	
-	
 	// 中心の緯度経度と半径を指定して範囲内の条件を検索.
 	private static final class ResultRadiusSearch
 		implements RimResultGeo {
@@ -212,10 +212,14 @@ public class RimGeoIndex {
 		// 経度の列番号.
 		private final int lonColumnNo;
 		
+		// 中心点の緯度.
+		private final double srcLat;
 		// 中心点の緯度（メートル）.
-		private final int latM;
+		private final int srcLatM;
+		// 中心点の経度.
+		private final double srcLon;
 		// 中心点の経度（メートル）.
-		private final int lonM;
+		private final int srcLonM;
 		// 検索対象半径（メートル）.
 		private final int targetRedius;
 		
@@ -264,17 +268,19 @@ public class RimGeoIndex {
 			// 経度列番号.
 			this.lonColumnNo = lonColumnNo;
 			
-			// latをメートル変換.
-			this.latM = GeoFastLine.calcLat(lat);
-			// lonをメートル変換.
-			this.lonM = GeoFastLine.calcLon(lon);
+			// 緯度.
+			this.srcLat = lat;
+			this.srcLatM = GeoFastLine.calcLat(lat);
+			// 経度.
+			this.srcLon = lon;
+			this.srcLonM = GeoFastLine.calcLon(lon);
 			// 検索対象の半径(メートル).
 			this.targetRedius = redius;
 			
 			// elementを初期化.
 			this.element = null;
 			// 検索範囲群の条件を生成.
-			this.betweenList = new long[18];
+			this.betweenList = new long[GeoQuad.SEARCH_QUAD_KEY_LENGTH];
 			// 検索範囲を生成.
 			GeoQuad.searchCode(
 				this.betweenList, GeoQuad.getDetail(redius), lat, lon);
@@ -322,13 +328,13 @@ public class RimGeoIndex {
 				// indexPosが有効な場合はその要素を取得.
 				if(indexPos != -2) {
 					// 今回のbetweenListの読み込みの範囲内の場合.
-					if(indexPos <= indexEndPos) {
+					if(indexPos < indexEndPos) {
 						// 今回のElementを取得.
-						element = index[indexPos ++];
+						element = index[++ indexPos];
 						// 対象行のBody行情報を取得.
 						row = body.getRow(element.getLineNo(0));
 						// 中心点から、対象の緯度・経度までの距離を取得.
-						p2p = GeoFastLine.get(latM, lonM,
+						p2p = GeoFastLine.get(srcLatM, srcLonM,
 							GeoFastLine.calcLat(row.getDouble(latColumnNo)),
 							GeoFastLine.calcLon(row.getDouble(lonColumnNo)));
 						// 取得条件が指定した半径の範囲外の場合.
@@ -343,13 +349,12 @@ public class RimGeoIndex {
 						continue;
 					}
 					// 次の検索範囲群で処理.
-					betweenPos += 2;
 					indexPos = -2;
 					indexEndPos = -1;
 				}
 				
 				// betweenPos が範囲外の場合.
-				if(betweenPos >= 18) {
+				if(betweenPos >= GeoQuad.SEARCH_QUAD_KEY_LENGTH) {
 					acquiredRowIdList = null;
 					return false;
 				}
@@ -358,7 +363,11 @@ public class RimGeoIndex {
 				// インデックス開始が正しく取得できた場合.
 				if(indexPos != -2) {
 					indexEndPos = SearchUtil.indexLE(index, betweenList[betweenPos + 1]);
+				} else {
+					indexPos = -2;
 				}
+				// 次のポジションに移動.
+				betweenPos += 2;
 			}
 		}
 
@@ -403,6 +412,11 @@ public class RimGeoIndex {
 			return body.getRow(nowLineNo)
 				.getDouble(lonColumnNo);
 		}
+		
+		@Override
+		public double getStrictRedius() {
+			return GeoLine.get(srcLat, srcLon, getLat(), getLon());
+		}
 	}
 	
 	/**
@@ -445,6 +459,11 @@ public class RimGeoIndex {
 		// 経度の列番号.
 		private final int lonColumnNo;
 		
+		// 中心点の緯度.
+		private final double srcLat;
+		// 中心点の経度.
+		private final double srcLon;
+		
 		// 昇順の場合はtrue.
 		private final boolean ascFlag;
 		
@@ -471,6 +490,8 @@ public class RimGeoIndex {
 			this.body = src.body;
 			this.latColumnNo = src.latColumnNo;
 			this.lonColumnNo = src.lonColumnNo;
+			this.srcLat = src.srcLat;
+			this.srcLon = src.srcLon;
 			this.ascFlag = ascFlag;
 			this.position = (ascFlag) ? -1 :
 				this.resultLength;
@@ -541,6 +562,11 @@ public class RimGeoIndex {
 		public double getLon() {
 			RimRow row = body.getRow(nowElement.rowId);
 			return row.getDouble(lonColumnNo);
+		}
+		
+		@Override
+		public double getStrictRedius() {
+			return GeoLine.get(srcLat, srcLon, getLat(), getLon());
 		}
 	}
 }
