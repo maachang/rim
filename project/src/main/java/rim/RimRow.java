@@ -1,7 +1,8 @@
-package rim.core;
+package rim;
 
 import java.util.Date;
 
+import rim.core.ColumnType;
 import rim.exception.RimException;
 import rim.util.DateUtil;
 import rim.util.FixedSearchArray;
@@ -12,8 +13,14 @@ import rim.util.TypesKeyValue;
  * このオブジェクトは取得毎に毎度生成はせずに使いまわします.
  */
 public final class RimRow implements TypesKeyValue<Object, Object> {
+	// 列情報.
 	private FixedSearchArray<String> columns;
+	// 列型群.
 	private ColumnType[] columnsType;
+	
+	// 対象行番号.
+	private int rowId;
+	// 対象行情報.
 	private Object[] row;
 
 	/**
@@ -30,10 +37,21 @@ public final class RimRow implements TypesKeyValue<Object, Object> {
 
 	/**
 	 * 次の行情報を設定します.
+	 * @param rowId 対象の行番号を設定します.
+	 * @param row 対象の行情報を設定します.
 	 */
-	protected RimRow set(Object[] row) {
+	protected RimRow set(int rowId, Object[] row) {
+		this.rowId = rowId;
 		this.row = row;
 		return this;
+	}
+	
+	/**
+	 * 現在の行番号を取得.
+	 * @return int 行番号が返却されます.
+	 */
+	public int getRowId() {
+		return rowId;
 	}
 
 	/**

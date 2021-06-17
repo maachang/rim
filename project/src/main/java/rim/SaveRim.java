@@ -1,4 +1,4 @@
-package rim.core;
+package rim;
 
 import java.io.BufferedOutputStream;
 import java.io.FileOutputStream;
@@ -8,15 +8,19 @@ import java.util.Date;
 import java.util.List;
 import java.util.zip.GZIPOutputStream;
 
-import rim.RimConstants;
 import rim.compress.CompressBuffer;
 import rim.compress.CompressType;
 import rim.compress.Lz4Compress;
 import rim.compress.ZstdCompress;
+import rim.core.ColumnType;
+import rim.core.RbbOutputStream;
+import rim.core.RimUtil;
 import rim.exception.RimException;
+import rim.geo.GeoQuad;
 import rim.util.CsvReader;
 import rim.util.CsvRow;
 import rim.util.ObjectList;
+import rim.util.TypesUtil;
 import rim.util.UTF8IO;
 import rim.util.seabass.SeabassCompress;
 import rim.util.seabass.SeabassCompressBuffer;
@@ -29,71 +33,6 @@ import rim.util.seabass.SeabassCompressBuffer;
  */
 @SuppressWarnings({ "rawtypes", "unchecked" })
 public class SaveRim {
-	/**
-	 * 1つのIndex行情報.
-	 */
-	private static final class IndexRow implements Comparable<IndexRow> {
-		final int rowId;
-		final Comparable value;
-
-		public IndexRow(int rowId, Comparable value) {
-			this.rowId = rowId;
-			this.value = value;
-		}
-
-		@Override
-		public int compareTo(IndexRow o) {
-			return value.compareTo(o.value);
-		}
-
-		public int getRowId() {
-			return rowId;
-		}
-
-		public Comparable getValue() {
-			return value;
-		}
-	}
-
-	/**
-	 * 1つのIndex列を示す内容.
-	 */
-	private static final class IndexColumn {
-		final int no;
-		ObjectList<IndexRow> rows;
-
-		public IndexColumn(int no) {
-			this.no = no;
-			this.rows = new ObjectList<IndexRow>();
-		}
-
-		public int getNo() {
-			return no;
-		}
-
-		public ObjectList<IndexRow> getRows() {
-			return rows;
-		}
-	}
-	
-	// 利用頻度の高いパラメータを１つにまとめた内容.
-	private static final class RimParams {
-		// 属性.
-		Object attribute;
-		// テンポラリバッファ.
-		byte[] tmp;
-		// 文字列テンポラリバッファ.
-		Object[] strBuf;
-		// 文字列の長さを保持するバイト値.
-		int stringHeaderLength;
-		// 行数に応じた行情報を保持するバイト値.
-		int byte1_4Len;
-		// オプション情報.
-		Object option;
-		// 再利用可能なBinaryのOutputStream.
-		RbbOutputStream rbb;
-	}
-
 	// 読み込み対象のCSVデーター.
 	private CsvReader csv;
 	// 出力先のファイル名.
@@ -104,11 +43,16 @@ public class SaveRim {
 	private int stringHeaderLength;
 	// オプション情報.
 	private Object option;
-	// CSV列毎の変換型群.
-	private ColumnType[] indexTypes;
+	
+	// 列型群.
+	private ColumnType[] columnTypes;
+	
 	// インデックス列情報群.
 	private ObjectList<IndexColumn> indexColumns =
 		new ObjectList<IndexColumn>();
+	// Geoインデックス列情報群.
+	private ObjectList<GeoIndexColumn> geoIndexColumns =
+		new ObjectList<GeoIndexColumn>();
 
 	/**
 	 * コンストラクタ.
@@ -176,9 +120,9 @@ public class SaveRim {
 		}
 	}
 
-	// Index型情報を取得.
-	private final void getIndexTypes() {
-		if(indexTypes != null) {
+	// CSVから列型群を生成.
+	private final void createColumnTypes() {
+		if(columnTypes != null) {
 			return;
 		}
 		int len = csv.getHeaderSize();
@@ -192,26 +136,63 @@ public class SaveRim {
 		for(int i = 0; i < len; i ++) {
 			list[i] = ColumnType.get(row.get(i));
 		}
-		indexTypes = list;
+		columnTypes = list;
 	}
 
 	/**
 	 * インデックス列追加.
-	 * @param column
-	 * @param type
-	 * @return
+	 * @param column 列名を設定します.
+	 * @return SaveRim このオブジェクトが返却されます.
 	 */
 	public SaveRim addIndex(String column) {
 		checkClose();
-		int no;
+		int columnNo;
 		// 指定されたインデックスの列名位置を取得.
-		if((no = csv.getHeader().search(column)) == -1) {
+		if((columnNo = csv.getHeader().search(column)) == -1) {
 			throw new RimException("Specified column name does not exist: " + column);
 		}
 		// CSV定義の列型群を生成.
-		getIndexTypes();
+		createColumnTypes();
 		// 列名位置のインデックス情報を作成.
-		indexColumns.add(new IndexColumn(no));
+		indexColumns.add(new IndexColumn(columnNo));
+		return this;
+	}
+	
+	/**
+	 * Geoインデックス列追加.
+	 * @param latColumn 緯度列名を設定します.
+	 * @param lonColumn 経度列名を設定します.
+	 * @return SaveRim このオブジェクトが返却されます.
+	 */
+	public SaveRim addGeoIndex(String latColumn, String lonColumn) {
+		checkClose();
+		int latColumnNo, lonColumnNo;
+		// 指定されたインデックスの列名位置を取得.
+		if((latColumnNo = csv.getHeader().search(latColumn)) == -1) {
+			throw new RimException(
+				"Specified latitude column name does not exist: " +
+					latColumnNo);
+		} else if((lonColumnNo = csv.getHeader().search(lonColumn)) == -1) {
+			throw new RimException(
+				"Specified longitude column name does not exist: " +
+					lonColumnNo);
+		}
+		// CSV定義の列型群を生成.
+		createColumnTypes();
+		
+		// 緯度・経度の型チェック.
+		ColumnType latType = columnTypes[latColumnNo];
+		ColumnType lonType = columnTypes[lonColumnNo];
+		if(ColumnType.Float != latType && ColumnType.Double != latType) {
+			throw new RimException(
+				"The type of the specified latitude column is not floating point.");
+		} else if(ColumnType.Float != lonType && ColumnType.Double != lonType) {
+			throw new RimException(
+				"The type of the specified longitude column is not floating point.");
+		}
+		
+		// 列名位置のインデックス情報を作成.
+		geoIndexColumns.add(new GeoIndexColumn(latColumnNo, lonColumnNo));
 		return this;
 	}
 
@@ -225,8 +206,8 @@ public class SaveRim {
 		OutputStream out = null;
 		try {
 			// インデックスが１つも設定されていない場合.
-			if(indexTypes == null) {
-				getIndexTypes();
+			if(columnTypes == null) {
+				createColumnTypes();
 			}
 			// インデックスリストを作成.
 			final IndexColumn[] indexList = createIndexList(csv, indexColumns);
@@ -247,40 +228,8 @@ public class SaveRim {
 			};
 			params.rbb = new RbbOutputStream();
 			
-			// 圧縮タイプが「デフォルト圧縮」の場合.
-			if(CompressType.Default == compressType) {
-				
-				// 属性にSeabassCompのバッファを生成して設定.
-				params.attribute = new SeabassCompressBuffer();
-			// 圧縮タイプが「GZIP圧縮」の場合.
-			} else if(CompressType.Gzip == compressType) {
-				
-				// 属性にRbbOutputStreamを生成して設定.
-				params.attribute = new RbbOutputStream();
-			// 圧縮タイプが「LZ4圧縮」の場合.
-			} else if(CompressType.LZ4 == compressType) {
-				
-				// LZ4が利用可能かチェック.
-				if(!Lz4Compress.getInstance().isSuccessLibrary()) {
-					throw new RimException("LZ4 is not available.");
-				}
-				
-				// 属性にCompressBufferのバッファを生成して設定.
-				params.attribute = new CompressBuffer();
-			// 圧縮タイプが「Zstd圧縮」の場合.
-			} else if(CompressType.Zstd == compressType) {
-				
-				// Zstdが利用可能かチェック.
-				if(!ZstdCompress.getInstance().isSuccessLibrary()) {
-					throw new RimException("Zstd is not available.");
-				}
-				
-				// 属性にCompressBufferのバッファを生成して設定.
-				params.attribute = new CompressBuffer();
-			}
-
 			// CSVデーターの読み込み.
-			ObjectList[] body = readCsv(csv, indexTypes, indexList);
+			ObjectList[] body = readCsv(csv, columnTypes, indexList, geoIndexColumns);
 			final int rowAll = body[0].size();
 
 			// 全行数に対する長さ管理をするバイト数を取得.
@@ -290,6 +239,9 @@ public class SaveRim {
 			out = new BufferedOutputStream(
 				new FileOutputStream(outFileName)
 			);
+			
+			// 指定圧縮条件の初期化処理.
+			initCompress(params, compressType);
 
 			// シンボルを出力.
 			out.write(RimConstants.SIMBOL_BINARY);
@@ -298,7 +250,7 @@ public class SaveRim {
 			out.write(len1Binary(params.tmp, compressType.getId()), 0, 1);
 
 			// ヘッダ情報を出力.
-			writeHeader(out, params, csv, indexTypes);
+			writeHeader(out, params, csv, columnTypes);
 
 			// それぞれの文字列を表現する長さを管理するヘッダバイト数を出力
 			// (1byte).
@@ -309,13 +261,19 @@ public class SaveRim {
 			
 			// 登録されてるインデックス数を書き込む(2byte).
 			out.write(len2Binary(params.tmp, indexColumns.size()), 0, 2);
+			
+			// 登録されてるGeoインデックス数を書き込む(2byte).
+			out.write(len2Binary(params.tmp, geoIndexColumns.size()), 0, 2);
 
 			// bodyデータを出力.
-			writeBody(out, params, body, indexTypes, compressType);
+			writeBody(out, params, body, columnTypes, compressType);
 			body = null;
 
 			// インデックス情報を出力.
-			writeIndex(out, params, indexTypes, compressType, indexColumns);
+			writeIndex(out, params, columnTypes, compressType, indexColumns);
+			
+			// Geoインデックス情報を出力.
+			writeGeoIndex(out, params, compressType, geoIndexColumns);
 
 			// 後処理.
 			out.close();
@@ -338,15 +296,52 @@ public class SaveRim {
 			}
 		}
 	}
+	
+	// 指定圧縮の初期化処理.
+	private static final void initCompress(
+		RimParams params, CompressType compressType) {
+		// 圧縮タイプが「デフォルト圧縮」の場合.
+		if(CompressType.Default == compressType) {
+			
+			// 属性にSeabassCompのバッファを生成して設定.
+			params.attribute = new SeabassCompressBuffer();
+		// 圧縮タイプが「GZIP圧縮」の場合.
+		} else if(CompressType.Gzip == compressType) {
+			
+			// 属性にRbbOutputStreamを生成して設定.
+			params.attribute = new RbbOutputStream();
+		// 圧縮タイプが「LZ4圧縮」の場合.
+		} else if(CompressType.LZ4 == compressType) {
+			
+			// LZ4が利用可能かチェック.
+			if(!Lz4Compress.getInstance().isSuccessLibrary()) {
+				throw new RimException("LZ4 is not available.");
+			}
+			
+			// 属性にCompressBufferのバッファを生成して設定.
+			params.attribute = new CompressBuffer();
+		// 圧縮タイプが「Zstd圧縮」の場合.
+		} else if(CompressType.Zstd == compressType) {
+			
+			// Zstdが利用可能かチェック.
+			if(!ZstdCompress.getInstance().isSuccessLibrary()) {
+				throw new RimException("Zstd is not available.");
+			}
+			
+			// 属性にCompressBufferのバッファを生成して設定.
+			params.attribute = new CompressBuffer();
+		}
+	}
 
 	// 列位置に対するインデックス管理情報を生成.
-	private static final IndexColumn[] createIndexList(CsvReader csv, ObjectList<IndexColumn> list) {
+	private static final IndexColumn[] createIndexList(
+		CsvReader csv, ObjectList<IndexColumn> list) {
 		IndexColumn c;
 		final IndexColumn[] ret = new IndexColumn[csv.getHeaderSize()];
 		final int len = list.size();
 		for(int i = 0; i < len; i ++) {
 			c = list.get(i);
-			ret[c.getNo()] = c;
+			ret[c.getColumnNo()] = c;
 		}
 		return ret;
 	}
@@ -354,8 +349,8 @@ public class SaveRim {
 	// CSV内容を読み込んで列群とインデックス群を取得.
 	// Body情報は列毎に行情報を管理する.
 	private static final ObjectList[] readCsv(CsvReader csv, ColumnType[] typeList,
-		IndexColumn[] indexList) throws IOException {
-		int i;
+		IndexColumn[] indexList, ObjectList<GeoIndexColumn> geoIndexColumns) throws IOException {
+		int i, j;
 		Object o;
 		List<String> row;
 		int rowId = 0;
@@ -376,18 +371,17 @@ public class SaveRim {
 				columns[i].add(
 					o = typeList[i].convert(row.get(i)));
 				// 対象項目をIndex化する場合.
-				if(indexList[i] != null) {
-					// 変換できないものとnullはIndex対象にしない.
-					if(o != null) {
-						// indexに生成した行情報を追加.
-						indexList[i].rows.add(
-							new IndexRow(rowId, (Comparable)o));
-						o = null;
-					}
+				// 変換できないものとnullはIndex対象にしない.
+				if(indexList[i] != null && o != null) {
+					// indexに生成した行情報を追加.
+					indexList[i].rows.add(
+						new IndexRow(rowId, (Comparable)o));
 				}
+				o = null;
 			}
 			rowId ++;
 		}
+		
 		// インデックス情報のソート処理.
 		for(i = 0; i < columnLength; i ++) {
 			if(indexList[i] != null) {
@@ -395,13 +389,264 @@ public class SaveRim {
 				indexList[i].rows.sort();
 			}
 		}
+		
 		// 列情報のスマート化.
 		for(i = 0; i < columnLength; i ++) {
 			columns[i].smart();
 		}
+		
+		// GeoIndexが存在する場合.
+		if(geoIndexColumns.size() > 0) {
+			int rowsLength = rowId;
+			ObjectList rows, rowsLat, rowsLon;
+			Object lat, lon;
+			GeoIndexColumn gio;
+			// 登録されているGeoIndexを作成.
+			final int geoIndexLength = geoIndexColumns.size();
+			for(i = 0; i < geoIndexLength; i ++) {
+				// １つのGeoIndex情報を取得.
+				gio = geoIndexColumns.get(i);
+				rows = gio.rows;
+				// Bodyから緯度、経度の列群を取得.
+				rowsLat = columns[gio.getLatColumnNo()];
+				rowsLon = columns[gio.getLonColumnNo()];
+				for(j = 0; j < rowsLength; j ++) {
+					// 緯度、経度情報を取得してDouble変換.
+					lat = TypesUtil.getDouble(rowsLat.get(j));
+					lon = TypesUtil.getDouble(rowsLon.get(j));
+					// 緯度・経度情報が存在する場合.
+					if(lat != null && lon != null) {
+						// インデックス追加.
+						rows.add(new IndexRow(j, GeoQuad.create(
+							(Double)lat, (Double)lon)));
+					}
+				}
+				// ソート処理.
+				if(rows.size() > 0) {
+					rows.smart();
+					rows.sort();
+				}
+			}
+		}
+		
 		return columns;
 	}
 
+	// ヘッダ情報を出力.
+	private static final void writeHeader(OutputStream out, RimParams params,
+		CsvReader csv, ColumnType[] types)
+		throws IOException {
+		final byte[] tmp = params.tmp;
+		
+		// 列数を設定(2byte).
+		int len = csv.getHeaderSize();
+		out.write(len2Binary(tmp, len), 0, 2);
+
+		// 列名を設定(len:1byte, utf8).
+		String name;
+		for(int i = 0; i < len; i ++) {
+			name = csv.getHeader(i);
+			out.write(len1Binary(tmp, name.length()), 0, 1);
+			out.write(name.getBytes("UTF8"));
+		}
+		
+		// 列型を設定(1byte).
+		for(int i = 0; i < len; i ++) {
+			out.write(len1Binary(tmp, types[i].getNo()), 0, 1);
+		}
+	}
+	
+	// bodyデータを出力.
+	private static final void writeBody(OutputStream out, RimParams params,
+		ObjectList[] body, ColumnType[] types, CompressType compressType)
+		throws IOException {
+		ObjectList o;
+		final byte[] tmp = params.tmp;
+		final int columnLen = types.length;
+		final RbbOutputStream rbb = params.rbb;
+		for(int i = 0; i < columnLen; i ++) {
+			o = body[i]; body[i] = null;
+			rbb.reset();
+			switch(types[i]) {
+			case Boolean:
+				writeBooleanColumns(rbb, tmp, o);
+				break;
+			case Byte:
+				writeByteColumns(rbb, tmp, o);
+				break;
+			case Short:
+				writeShortColumns(rbb, tmp, o);
+				break;
+			case Integer:
+				writeIntegerColumns(rbb, tmp, o);
+				break;
+			case Long:
+				writeLongColumns(rbb, tmp, o);
+				break;
+			case Float:
+				writeFloatColumns(rbb, tmp, o);
+				break;
+			case Double:
+				writeDoubleColumns(rbb, tmp, o);
+				break;
+			case String:
+				writeStringColumns(rbb, tmp, params.strBuf,
+					params.stringHeaderLength, o);
+				break;
+			case Date:
+				writeDateColumns(rbb, tmp, o);
+				break;
+			}
+			// RbbOutputStreamに書き込んだ情報を出力.
+			writeCompress(out, params, compressType);
+		}
+	}
+
+	// Index群を出力.
+	private static final void writeIndex(OutputStream out,
+		RimParams params, ColumnType[] types, CompressType compressType,
+		ObjectList<IndexColumn> indexColumns) throws IOException {
+		
+		ColumnType type;
+		IndexColumn index;
+		ObjectList<IndexRow> list;
+		
+		final byte[] tmp = params.tmp;
+		final int byte1_4Len = params.byte1_4Len;
+		final int len = indexColumns.size();
+		
+		// インデックス毎に出力.
+		for(int i = 0; i < len; i ++) {
+			index = indexColumns.get(i);
+			type = types[index.getColumnNo()];
+			list = index.getRows();
+			
+			// このIndexを示す列番号を出力(2byte).
+			out.write(len2Binary(tmp, index.getColumnNo()), 0, 2);
+			
+			// このIndexの総行数を出力.
+			out.write(
+				len1_4Binary(tmp, byte1_4Len, list.size()), 0, byte1_4Len);
+			
+			// indexの行群を出力.
+			writeIndexRows(out, params, type, compressType, list);
+		}
+	}
+	
+	// GeoIndex群を出力.
+	private static final void writeGeoIndex(OutputStream out, RimParams params,
+		CompressType compressType, ObjectList<GeoIndexColumn> geoIndexColumns)
+		throws IOException {
+		
+		GeoIndexColumn index;
+		ObjectList<IndexRow> list;
+		
+		final byte[] tmp = params.tmp;
+		final int byte1_4Len = params.byte1_4Len;
+		final int len = geoIndexColumns.size();
+		
+		// インデックス毎に出力.
+		for(int i = 0; i < len; i ++) {
+			index = geoIndexColumns.get(i);
+			list = index.getRows();
+			
+			// 元の緯度情報を示す列番号を出力(2byte).
+			out.write(len2Binary(tmp, index.getLatColumnNo()), 0, 2);
+			
+			// 元の経度情報を示す列番号を出力(2byte).
+			out.write(len2Binary(tmp, index.getLonColumnNo()), 0, 2);
+			
+			// このIndexの総行数を出力.
+			out.write(len1_4Binary(
+				tmp, byte1_4Len, list.size()), 0, byte1_4Len);
+			
+			// indexの行群を出力.
+			writeIndexRows(out, params, ColumnType.Long, compressType, list);
+		}
+	}
+	
+	// indexの行群を書き込む.
+	private static final int writeIndexRows(
+		OutputStream out, RimParams params, ColumnType type,
+		CompressType compressType, ObjectList<IndexRow> list)
+		throws IOException {
+		
+		//
+		// ソートされたIndexでは、同一の条件が並んで管理されてる可能性がある
+		// ので、それらを以下のように最適化して保存する.
+		// <ソートされたIndex情報>
+		//  {value: 100, rowId: 1}
+		//  {value: 100, rowId: 3}
+		//  {value: 100, rowId: 11}
+		//  {value: 203, rowId: 5}
+		//  {value: 203, rowId: 38}
+		//  {value: 210, rowId: 111}
+		//
+		// <最適化されたIndex情報>
+		//  {value: 100, [1, 3, 11]}
+		//  {value: 203, [5, 38]}
+		//  {value: 210, [111]}
+		//
+		
+		int pos = 0;
+		int ret = 0;
+		IndexRow row, bef = null;
+		final int oneIndexLength = list.size();
+		final RbbOutputStream rbb = params.rbb;
+		rbb.reset();
+		for(int i = 0; i < oneIndexLength; i ++) {
+			row = list.get(i);
+			// 前回value条件と一致しない場合.
+			if(bef != null && !bef.getValue().equals(row.getValue())) {
+
+				// 最適化Index情報を保存.
+				ret += optimizeWriteIndex(rbb, params, type, list, pos, i);
+
+				// 現在をポジションとする.
+				pos = i;
+			}
+			// 次の処理での前回情報として保存.
+			bef = row;
+		}
+		
+		// 最後の情報を書き込み.
+		ret += optimizeWriteIndex(rbb, params, type, list, pos, oneIndexLength);
+		
+		// rbbの内容を出力.
+		writeCompress(out, params, compressType);
+		
+		return ret;
+	}
+
+	// 最適化されたIndex書き込み.
+	private static final int optimizeWriteIndex(RbbOutputStream rbb, RimParams params,
+		ColumnType type, ObjectList<IndexRow> list,
+		int start, int end)
+		throws IOException {
+
+		final byte[] tmp = params.tmp;
+		final Object[] strBuf = params.strBuf;
+		final int stringHeaderLength = params.stringHeaderLength;
+		final int byte1_4Len = params.byte1_4Len;
+		
+		// value情報を出力.
+		convertValue(rbb, tmp, strBuf, stringHeaderLength, type,
+			list.get(start).getValue());
+
+		// 連続する行数を出力.
+		rbb.write(len1_4Binary(tmp, byte1_4Len, end - start), 0, byte1_4Len);
+		
+		// 連続する行ID群を出力.
+		int ret = 0;
+		for(int i = start; i < end; i ++) {
+			rbb.write(len1_4Binary(tmp, byte1_4Len, list.get(i).getRowId()),
+				0, byte1_4Len);
+			ret ++;
+		}
+		
+		return ret;
+	}
+	
 	// 1byteのデーターセット.
 	private static final byte[] len1Binary(byte[] tmp, int len) {
 		tmp[0] = (byte)(len & 0x000000ff);
@@ -795,30 +1040,6 @@ public class SaveRim {
 			break;
 		}
 	}
-
-	// ヘッダ情報を出力.
-	private static final void writeHeader(OutputStream out, RimParams params,
-		CsvReader csv, ColumnType[] types)
-		throws IOException {
-		final byte[] tmp = params.tmp;
-		
-		// 列数を設定(2byte).
-		int len = csv.getHeaderSize();
-		out.write(len2Binary(tmp, len), 0, 2);
-
-		// 列名を設定(len:1byte, utf8).
-		String name;
-		for(int i = 0; i < len; i ++) {
-			name = csv.getHeader(i);
-			out.write(len1Binary(tmp, name.length()), 0, 1);
-			out.write(name.getBytes("UTF8"));
-		}
-		
-		// 列型を設定(1byte).
-		for(int i = 0; i < len; i ++) {
-			out.write(len1Binary(tmp, types[i].getNo()), 0, 1);
-		}
-	}
 	
 	// 列群をBooleanで書き込む.
 	private static final void writeBooleanColumns(OutputStream out, byte[] tmp, ObjectList v)
@@ -910,152 +1131,125 @@ public class SaveRim {
 		}
 	}
 	
-	// bodyデータを出力.
-	private static final void writeBody(OutputStream out, RimParams params,
-		ObjectList[] body, ColumnType[] types, CompressType compressType)
-		throws IOException {
-		ObjectList o;
-		final byte[] tmp = params.tmp;
-		final int columnLen = types.length;
-		final RbbOutputStream rbb = params.rbb;
-		for(int i = 0; i < columnLen; i ++) {
-			o = body[i]; body[i] = null;
-			rbb.reset();
-			switch(types[i]) {
-			case Boolean:
-				writeBooleanColumns(rbb, tmp, o);
-				break;
-			case Byte:
-				writeByteColumns(rbb, tmp, o);
-				break;
-			case Short:
-				writeShortColumns(rbb, tmp, o);
-				break;
-			case Integer:
-				writeIntegerColumns(rbb, tmp, o);
-				break;
-			case Long:
-				writeLongColumns(rbb, tmp, o);
-				break;
-			case Float:
-				writeFloatColumns(rbb, tmp, o);
-				break;
-			case Double:
-				writeDoubleColumns(rbb, tmp, o);
-				break;
-			case String:
-				writeStringColumns(rbb, tmp, params.strBuf,
-					params.stringHeaderLength, o);
-				break;
-			case Date:
-				writeDateColumns(rbb, tmp, o);
-				break;
-			}
-			// RbbOutputStreamに書き込んだ情報を出力.
-			writeCompress(out, params, compressType);
+	/**
+	 * 1つのIndex行情報.
+	 */
+	private static final class IndexRow implements Comparable<IndexRow> {
+		final int rowId;
+		final Comparable value;
+
+		public IndexRow(int rowId, Comparable value) {
+			this.rowId = rowId;
+			this.value = value;
+		}
+
+		@Override
+		public int compareTo(IndexRow o) {
+			return value.compareTo(o.value);
+		}
+
+		public int getRowId() {
+			return rowId;
+		}
+
+		public Comparable getValue() {
+			return value;
 		}
 	}
 
-	// Index群を出力.
-	private static final void writeIndex(OutputStream out, RimParams params, ColumnType[] types,
-		CompressType compressType, ObjectList<IndexColumn> indexColumns) throws IOException {
-		final int len = indexColumns.size();
+	/**
+	 * 1つのIndex列を示す内容.
+	 */
+	private static final class IndexColumn {
+		final int columnNo;
+		ObjectList<IndexRow> rows;
 
-		// インデックス毎に出力.
-		for(int i = 0; i < len; i ++) {
-			writeOneIndex(out, params, types[indexColumns.get(i).getNo()], compressType,
-				indexColumns.get(i));
+		/**
+		 * コンストラクタ.
+		 * @param columnNo インデックス対象の列番号を設定します.
+		 */
+		public IndexColumn(int columnNo) {
+			this.columnNo = columnNo;
+			this.rows = new ObjectList<IndexRow>();
+		}
+
+		/**
+		 * インデックス対象の列番号が返却されます.
+		 * @return int 列番号が返却されます.
+		 */
+		public int getColumnNo() {
+			return columnNo;
+		}
+		
+		/**
+		 * インデックス行群を取得.
+		 * @return 行群が返却されます.
+		 */
+		public ObjectList<IndexRow> getRows() {
+			return rows;
 		}
 	}
+	
+	/**
+	 * １つのGeoIndex列を示す内容.
+	 */
+	private static final class GeoIndexColumn {
+		final int latColumnNo;
+		final int lonColumnNo;
+		ObjectList<IndexRow> rows;
+		
+		/**
+		 * コンストラクタ.
+		 * @param latColumnNo インデックス対象の緯度列番号を設定します.
+		 * @param lonColumnNo インデックス対象の経度列番号を設定します.
+		 */
+		public GeoIndexColumn(int latColumnNo, int lonColumnNo) {
+			this.latColumnNo = latColumnNo;
+			this.lonColumnNo = lonColumnNo;
+			this.rows = new ObjectList<IndexRow>();
+		}
 
-	// １つのIndexを出力.
-	private static final int writeOneIndex(OutputStream out, RimParams params, ColumnType type,
-		CompressType compressType, IndexColumn index) throws IOException {
-
-		//
-		// ソートされたIndexでは、同一の条件が並んで管理されてる可能性がある
-		// ので、それらを以下のように最適化して保存する.
-		// <ソートされたIndex情報>
-		//  {value: 100, rowId: 1}
-		//  {value: 100, rowId: 3}
-		//  {value: 100, rowId: 11}
-		//  {value: 203, rowId: 5}
-		//  {value: 203, rowId: 38}
-		//  {value: 210, rowId: 111}
-		//
-		// <最適化されたIndex情報>
-		//  {value: 100, [1, 3, 11]}
-		//  {value: 203, [5, 38]}
-		//  {value: 210, [111]}
-		//
-		final byte[] tmp = params.tmp;
-		final int byte1_4Len = params.byte1_4Len;
-
-		IndexRow row, bef = null;
-		final ObjectList<IndexRow> list = index.getRows();
-		final int oneIndexLength = list.size();
-
-		// このIndexを示す列番号を出力(2byte).
-		out.write(len2Binary(tmp, index.getNo()), 0, 2);
-
-		// このIndexの総行数を出力.
-		out.write(len1_4Binary(tmp, byte1_4Len, oneIndexLength), 0, byte1_4Len);
-
-		// インデックス内容を出力.
-		int pos = 0;
-		int ret = 0;
-		final RbbOutputStream rbb = params.rbb;
-		rbb.reset();
-		for(int i = 0; i < oneIndexLength; i ++) {
-			row = list.get(i);
-			// 前回value条件と一致しない場合.
-			if(bef != null && !bef.getValue().equals(row.getValue())) {
-
-				// 最適化Index情報を保存.
-				ret += optimizeWriteIndex(rbb, params, type, list, pos, i);
-
-				// 現在をポジションとする.
-				pos = i;
-			}
-			// 次の処理での前回情報として保存.
-			bef = row;
+		/**
+		 * インデックス対象の緯度列番号が返却されます.
+		 * @return int 緯度列番号が返却されます.
+		 */
+		public int getLatColumnNo() {
+			return latColumnNo;
 		}
 		
-		// 最後の情報を書き込み.
-		ret += optimizeWriteIndex(rbb, params, type, list, pos, oneIndexLength);
-		
-		// rbbの内容を出力.
-		writeCompress(out, params, compressType);
-		
-		return ret;
+		/**
+		 * インデックス対象の経度列番号が返却されます.
+		 * @return int 経度列番号が返却されます.
+		 */
+		public int getLonColumnNo() {
+			return lonColumnNo;
+		}
+
+		/**
+		 * インデックス行群を取得.
+		 * @return 行群が返却されます.
+		 */
+		public ObjectList<IndexRow> getRows() {
+			return rows;
+		}
 	}
-
-	// 最適化されたIndex書き込み.
-	private static final int optimizeWriteIndex(RbbOutputStream rbb, RimParams params,
-		ColumnType type, ObjectList<IndexRow> list,
-		int start, int end)
-		throws IOException {
-
-		final byte[] tmp = params.tmp;
-		final Object[] strBuf = params.strBuf;
-		final int stringHeaderLength = params.stringHeaderLength;
-		final int byte1_4Len = params.byte1_4Len;
+	
+	// 利用頻度の高いパラメータを１つにまとめた内容.
+	private static final class RimParams {
+		// 属性.
+		Object attribute;
+		// テンポラリバッファ.
+		byte[] tmp;
+		// 文字列テンポラリバッファ.
+		Object[] strBuf;
+		// 文字列の長さを保持するバイト値.
+		int stringHeaderLength;
+		// 行数に応じた行情報を保持するバイト値.
+		int byte1_4Len;
+		// オプション情報.
+		Object option;
+		// 再利用可能なBinaryのOutputStream.
+		RbbOutputStream rbb;
 		
-		// value情報を出力.
-		convertValue(rbb, tmp, strBuf, stringHeaderLength, type,
-			list.get(start).getValue());
-
-		// 連続する行数を出力.
-		rbb.write(len1_4Binary(tmp, byte1_4Len, end - start), 0, byte1_4Len);
-		
-		// 連続する行ID群を出力.
-		int ret = 0;
-		for(int i = start; i < end; i ++) {
-			rbb.write(len1_4Binary(tmp, byte1_4Len, list.get(i).getRowId()),
-				0, byte1_4Len);
-			ret ++;
-		}
-		
-		return ret;
 	}
 }

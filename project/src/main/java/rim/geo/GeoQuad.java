@@ -1,4 +1,4 @@
-package rim.core.geo;
+package rim.geo;
 
 /**
  * QuadKey.
@@ -50,8 +50,9 @@ public final class GeoQuad {
 	public static final int MAX_DETAIL = 23;
 
 	/** 距離(メートル)別情報. **/
-	private static final int[] DISTANCE_LIST = { 40075017, 20037508, 10018754, 5009377, 2504689, 1252344, 626172,
-		313086, 156543, 78272, 39136, 19568, 9784, 4892, 2446, 1223, 612, 306, 153, 76, 38, 19, 10, 5 };
+	private static final int[] DISTANCE_LIST = { 40075017, 20037508, 10018754,
+		5009377, 2504689, 1252344, 626172, 313086, 156543, 78272, 39136, 19568,
+		9784, 4892, 2446, 1223, 612, 306, 153, 76, 38, 19, 10, 5 };
 
 	/** PI. **/
 	private static final double PI = 3.14159265358979323846d;
@@ -68,7 +69,8 @@ public final class GeoQuad {
 	}
 
 	/** 緯度経度から、QuadKeyを生成. **/
-	private static final long latLonToQuadKey(final int detail, final double lat, final double lon) {
+	private static final long latLonToQuadKey(final int detail, final double lat,
+		final double lon) {
 		final double sLat = Math.sin(r(lat) * SIN_LAT_PI);
 		final double x = (r(lon) + 180d) / 360d;
 		final double y = 0.5d - Math.log((1d + sLat) / (1d - sLat)) / PI4;
@@ -88,7 +90,8 @@ public final class GeoQuad {
 	}
 
 	/** QuadKeyから緯度経度変換. **/
-	private static final void quadKeyToLatLon(final double[] out, final long key, final int detail) {
+	private static final void quadKeyToLatLon(final double[] out, final long key,
+		final int detail) {
 		int i, mask;
 		int xx = 0;
 		int yy = 0;
@@ -117,8 +120,8 @@ public final class GeoQuad {
 	}
 
 	/** 検索用QuadKeyを生成. **/
-	private static final void createSearchData(final long[] out, final int no, final int detail, final int tileX,
-			final int tileY) {
+	private static final void createSearchData(final long[] out, final int no,
+		final int detail, final int tileX, final int tileY) {
 		int i, n, mask;
 		long key = 0;
 		long cnt = (long) (detail << 1);
@@ -126,14 +129,16 @@ public final class GeoQuad {
 			n = i - 1;
 			mask = 1 << n;
 			cnt -= 2L;
-			key |= (long) (((tileX & mask) >> n) + (((tileY & mask) >> n) << 1)) << cnt;
+			key |= (long) (((tileX & mask) >> n) +
+				(((tileY & mask) >> n) << 1)) << cnt;
 		}
 		final long shift = ((MAX_DETAIL - detail) << 1L);
 		out[no] = key << shift;
 		if (detail == MAX_DETAIL) {
 			out[no + 1] = out[no];
 		} else {
-			out[no + 1] = out[no] | (0x7fffffffffffffffL & ((1L << shift) - 1L));
+			out[no + 1] = out[no] | (0x7fffffffffffffffL &
+				((1L << shift) - 1L));
 		}
 	}
 
@@ -172,7 +177,7 @@ public final class GeoQuad {
 	 * @param lon 経度を設定します.
 	 * @return long QuadKeyが返却されます.
 	 */
-	public static final long create(double lat, double lon) {
+	public static final long create(final double lat, final double lon) {
 		return latLonToQuadKey(MAX_DETAIL, r(lat), r(lon));
 	}
 
@@ -188,9 +193,11 @@ public final class GeoQuad {
 	 *            経度を設定します.
 	 * @return long QuadKeyが返却されます.
 	 */
-	public static final long create(int detail, double lat, double lon) {
+	public static final long create(final int detail, final double lat,
+		final double lon) {
 		if (detail != MAX_DETAIL) {
-			return latLonToQuadKey(detail, r(lat), r(lon)) << (long) ((MAX_DETAIL - detail) << 1);
+			return latLonToQuadKey(detail, r(lat), r(lon)) << (long)
+				((MAX_DETAIL - detail) << 1);
 		}
 		return latLonToQuadKey(detail, r(lat), r(lon));
 	}
@@ -201,7 +208,7 @@ public final class GeoQuad {
 	 * @param out [0]緯度,[1]経度 が格納されます.
 	 * @param key 対象のQuadKeyを設定します.
 	 */
-	public static final void latLon(double[] out, long key) {
+	public static final void latLon(final double[] out, final long key) {
 		quadKeyToLatLon(out, key, MAX_DETAIL);
 	}
 
@@ -211,7 +218,7 @@ public final class GeoQuad {
 	 * @param key 対象のQuadKeyを設定します.
 	 * @return double[] [0]緯度,[1]経度 が格納されます.
 	 */
-	public static final double[] latLon(long key) {
+	public static final double[] latLon(final long key) {
 		final double[] ret = new double[2];
 		quadKeyToLatLon(ret, key, MAX_DETAIL);
 		return ret;
@@ -226,11 +233,12 @@ public final class GeoQuad {
 	 *               この値は[1]～[23]の範囲で設定します.
 	 * @param key [quadKey]で生成したキーを設定します.
 	 */
-	public static final long endKey(int detail, long key) {
+	public static final long endKey(final int detail, final long key) {
 		if (detail == MAX_DETAIL) {
 			return key;
 		}
-		return key | (0x7fffffffffffffffL & ((1L << (long) ((MAX_DETAIL - detail) << 1)) - 1L));
+		return key | (0x7fffffffffffffffL & ((1L <<
+			(long)((MAX_DETAIL - detail) << 1)) - 1L));
 	}
 
 	/**
@@ -242,7 +250,8 @@ public final class GeoQuad {
 	 * @param lat 緯度を設定します.
 	 * @param lon 経度を設定します.
 	 */
-	public static final void searchCode(long[] out, int detail, double lat, double lon) {
+	public static final void searchCode(final long[] out, final int detail,
+		final double lat, final double lon) {
 		// 検索データの中心データを作成.
 		final double sLat = Math.sin(r(lat) * SIN_LAT_PI);
 		final double x = (r(lon) + 180d) / 360d;
@@ -313,10 +322,12 @@ public final class GeoQuad {
 	 *               この値は[1]～[23]の範囲で設定します.
 	 * @param lat 緯度を設定します.
 	 * @param lon 経度を設定します.
-	 * @return long[] 範囲検索のQuadKeyが返却されます. [n]最小値. [n+1]最大値 ... 検索範囲のQuadKeyの最小値、最大値
+	 * @return long[] 範囲検索のQuadKeyが返却されます. [n]最小値.
+	 *                [n+1]最大値 ... 検索範囲のQuadKeyの最小値、最大値
 	 *                合計で18個が格納されます.
 	 */
-	public static final long[] searchCode(int detail, double lat, double lon) {
+	public static final long[] searchCode(final int detail, final double lat,
+		final double lon) {
 		final long[] ret = new long[18];
 		searchCode(ret, detail, lat, lon);
 		return ret;

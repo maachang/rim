@@ -1,9 +1,15 @@
-package rim.core;
+package rim;
 
 import java.util.Arrays;
 import java.util.NoSuchElementException;
 
+import rim.core.ColumnType;
+import rim.core.LikeAnalysis;
+import rim.core.LikeParser;
+import rim.core.SearchUtil;
 import rim.exception.RimException;
+import rim.index.RimGeoIndex;
+import rim.index.RimIndex;
 import rim.util.FixedSearchArray;
 import rim.util.ObjectList;
 import rim.util.TypesUtil;
@@ -108,23 +114,40 @@ public class RimBody {
 	
 	/**
 	 * インデックスの作成.
-	 * @param columnNo インデックスの列番号を設定します.
+	 * @param columnNo 列番号を設定します.
 	 * @param planIndexSize このインデックスの予定長を設定します.
 	 * @return RimIndex 空のRimIndexが返却されます.
 	 */
-	public final RimIndex createIndex(int columnNo, int planIndexSize) {
+	protected final RimIndex createIndex(int columnNo, int planIndexSize) {
 		checkNoFix();
-		return new RimIndex(columnNo,
-			getColumnName(columnNo),
-			getColumnType(columnNo),
-			getRowLength(),
+		return new RimIndex(
+			this,
+			columnNo,
 			planIndexSize);
 	}
 	
 	/**
+	 * Geoインデックスの作成.
+	 * @param latColumnNo 緯度列番号を設定します.
+	 * @param lonColumnNo 経度列番号を設定します.
+	 * @param planIndexSize このインデックスの予定長を設定します.
+	 * @return RimGeoIndex 空のRimGeoIndexが返却されます.
+	 */
+	protected final RimGeoIndex createGeoIndex(int latColumnNo, int lonColumnNo,
+		int planIndexSize) {
+		checkNoFix();
+		return new RimGeoIndex(
+			this,
+			latColumnNo,
+			lonColumnNo,
+			planIndexSize);
+	}
+
+	
+	/**
 	 * Bodyの追加処理がすべて完了した場合に呼び出します.
 	 */
-	public void fix() {
+	protected void fix() {
 		if(fixFlag) {
 			return;
 		}
@@ -201,7 +224,7 @@ public class RimBody {
 		if(rowId < 0 || rowId >= rowLength) {
 			throw new RimException("Line numbers are out of range.");
 		}
-		return rimRow.set((Object[])rows[rowId]);
+		return rimRow.set(rowId, (Object[])rows[rowId]);
 	}
 	
 	/**
@@ -263,9 +286,236 @@ public class RimBody {
 		return rowLength;
 	}
 	
+
+	/**
+	 * 一致した検索条件を取得.
+	 * @param ascFlag 昇順で情報取得する場合は true.
+	 * @param notEq Not条件で検索する場合は true.
+	 * @param columnName 列名を設定します.
+	 * @param value 条件を設定します.
+	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 */
+	public RimResultSearch<Integer> eq(boolean ascFlag,  boolean notEq,
+		String columnName, Object value) {
+		return eq(ascFlag, notEq, getColumnNameByNo(columnName), value);
+	}
+
+	/**
+	 * 一致した検索条件を取得.
+	 * @param ascFlag 昇順で情報取得する場合は true.
+	 * @param notEq Not条件で検索する場合は true.
+	 * @param columnNo 列番号を設定します.
+	 * @param value 条件を設定します.
+	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 */
+	public RimResultSearch<Integer> eq(boolean ascFlag,  boolean notEq,
+		int columnNo, Object value) {
+		checkFix();
+		return new ResultSearchBody(new NormalSearchEq(
+				this, ascFlag, notEq, columnNo, value));
+	}
+	
+	/**
+	 * 大なり[>]の検索条件を取得.
+	 * @param ascFlag 昇順で情報取得する場合は true.
+	 * @param notEq Not条件で検索する場合は true.
+	 * @param columnName 列名を設定します.
+	 * @param value 条件を設定します.
+	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 */
+	public RimResultSearch<Integer> gt(boolean ascFlag, boolean notEq,
+		String columnName, Object value) {
+		return gt(ascFlag, notEq, getColumnNameByNo(columnName), value);
+	}
+	
+	/**
+	 * 大なり[>]の検索条件を取得.
+	 * @param ascFlag 昇順で情報取得する場合は true.
+	 * @param notEq Not条件で検索する場合は true.
+	 * @param columnNo 列番号を設定します.
+	 * @param value 条件を設定します.
+	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 */
+	public RimResultSearch<Integer> gt(boolean ascFlag, boolean notEq,
+		int columnNo, Object value) {
+		checkFix();
+		return new ResultSearchBody(new NormalSearchGT(
+				this, ascFlag, notEq, columnNo, value));
+	}
+	
+	/**
+	 * 大なり[>=]の検索条件を取得.
+	 * @param ascFlag 昇順で情報取得する場合は true.
+	 * @param notEq Not条件で検索する場合は true.
+	 * @param columnName 列名を設定します.
+	 * @param value 条件を設定します.
+	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 */
+	public RimResultSearch<Integer> ge(boolean ascFlag, boolean notEq,
+		String columnName, Object value) {
+		return ge(ascFlag, notEq, getColumnNameByNo(columnName), value);
+	}
+	
+	/**
+	 * 大なり[>=]の検索条件を取得.
+	 * @param ascFlag 昇順で情報取得する場合は true.
+	 * @param notEq Not条件で検索する場合は true.
+	 * @param columnNo 列番号を設定します.
+	 * @param value 条件を設定します.
+	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 */
+	public RimResultSearch<Integer> ge(boolean ascFlag, boolean notEq,
+		int columnNo, Object value) {
+		checkFix();
+		return new ResultSearchBody(new NormalSearchGE(
+				this, ascFlag, notEq, columnNo, value));
+	}
+	
+	/**
+	 * 小なり[<]の検索条件を取得.
+	 * @param ascFlag 昇順で情報取得する場合は true.
+	 * @param notEq Not条件で検索する場合は true.
+	 * @param columnName 列名を設定します.
+	 * @param value 条件を設定します.
+	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 */
+	public RimResultSearch<Integer> lt(boolean ascFlag, boolean notEq,
+		String columnName, Object value) {
+		return lt(ascFlag, notEq, getColumnNameByNo(columnName), value);
+	}
+	
+	/**
+	 * 小なり[<]の検索条件を取得.
+	 * @param ascFlag 昇順で情報取得する場合は true.
+	 * @param notEq Not条件で検索する場合は true.
+	 * @param columnNo 列番号を設定します.
+	 * @param value 条件を設定します.
+	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 */
+	public RimResultSearch<Integer> lt(boolean ascFlag, boolean notEq,
+		int columnNo, Object value) {
+		checkFix();
+		return new ResultSearchBody(new NormalSearchLT(
+				this, ascFlag, notEq, columnNo, value));
+	}
+	
+	/**
+	 * 小なり[<=]の検索条件を取得.
+	 * @param ascFlag 昇順で情報取得する場合は true.
+	 * @param notEq Not条件で検索する場合は true.
+	 * @param columnName 列名を設定します.
+	 * @param value 条件を設定します.
+	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 */
+	public RimResultSearch<Integer> le(boolean ascFlag, boolean notEq,
+		String columnName, Object value) {
+		return le(ascFlag, notEq, getColumnNameByNo(columnName), value);
+	}
+	
+	/**
+	 * 小なり[<=]の検索条件を取得.
+	 * @param ascFlag 昇順で情報取得する場合は true.
+	 * @param notEq Not条件で検索する場合は true.
+	 * @param columnNo 列番号を設定します.
+	 * @param value 条件を設定します.
+	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 */
+	public RimResultSearch<Integer> le(boolean ascFlag, boolean notEq,
+		int columnNo, Object value) {
+		checkFix();
+		return new ResultSearchBody(new NormalSearchLE(
+			this, ascFlag, notEq, columnNo, value));
+	}
+	
+	/**
+	 * 指定した start から end まで範囲検索.
+	 * @param ascFlag 昇順で情報取得する場合は true.
+	 * @param notEq Not条件で検索する場合は true.
+	 * @param columnName 列名を設定します.
+	 * @param start 開始条件を設定します.
+	 * @param end 終了条件を設定します.
+	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 */
+	public RimResultSearch<Integer> between(
+		boolean ascFlag, boolean notEq, String columnName, Object start, Object end) {
+		return between(ascFlag, notEq, getColumnNameByNo(columnName), start, end);
+	}
+	
+	/**
+	 * 指定した start から end まで範囲検索.
+	 * @param ascFlag 昇順で情報取得する場合は true.
+	 * @param notEq Not条件で検索する場合は true.
+	 * @param columnNo 列番号を設定します.
+	 * @param start 開始条件を設定します.
+	 * @param end 終了条件を設定します.
+	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 */
+	public RimResultSearch<Integer> between(
+		boolean ascFlag, boolean notEq, int columnNo, Object start, Object end) {
+		checkFix();
+		return new ResultSearchBody(new NormalSearchBetween(
+			this, ascFlag, notEq, columnNo, start, end));
+	}
+	
+	/**
+	 * 指定したvaluesに一致する内容を取得.
+	 * @param ascFlag 昇順で情報取得する場合は true.
+	 * @param notEq Not条件で検索する場合は true.
+	 * @param columnName 列名を設定します.
+	 * @param values 一致条件を複数設定します.
+	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 */
+	public RimResultSearch<Integer> in(
+		boolean ascFlag, boolean notEq, String columnName, Object... values) {
+		return in(ascFlag, notEq, getColumnNameByNo(columnName), values);
+	}
+	
+	/**
+	 * 指定したvaluesに一致する内容を取得.
+	 * @param ascFlag 昇順で情報取得する場合は true.
+	 * @param notEq Not条件で検索する場合は true.
+	 * @param columnNo 列番号を設定します.
+	 * @param values 一致条件を複数設定します.
+	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 */
+	public RimResultSearch<Integer> in(
+		boolean ascFlag, boolean notEq, int columnNo, Object... values) {
+		checkFix();
+		return new ResultSearchBody(new NormalSearchIn(
+			this, ascFlag, notEq, columnNo, values));
+	}
+
+	/**
+	 * Like検索条件を取得.
+	 * @param ascFlag 昇順で情報取得する場合は true.
+	 * @param notEq Not条件で検索する場合は true.
+	 * @param columnName 列名を設定します.
+	 * @param value 条件を設定します.
+	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 */
+	public RimResultSearch<Integer> like(boolean ascFlag, boolean notEq,
+		String columnName, String value) {
+		return like(ascFlag, notEq, getColumnNameByNo(columnName), value);
+	}
+	
+	/**
+	 * Like検索条件を取得.
+	 * @param ascFlag 昇順で情報取得する場合は true.
+	 * @param notEq Not条件で検索する場合は true.
+	 * @param columnNo 列番号を設定します.
+	 * @param value 条件を設定します.
+	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 */
+	public RimResultSearch<Integer> like(boolean ascFlag, boolean notEq,
+		int columnNo, String value) {
+		checkFix();
+		return new ResultSearchBody(new NormalSearchLike(
+			this, ascFlag, notEq, columnNo, value));
+	}
+	
 	// 指定列のBody検索結果を格納するオブジェクト.
 	private static final class ResultSearchBody
-		implements ResultSearch<Integer> {
+		implements RimResultSearch<Integer> {
 		// 各検索条件の検索管理オブジェクト.
 		private NormalSearch normalSearch;
 		// hasNext()呼び出しでの検索位置情報.
@@ -326,6 +576,12 @@ public class RimBody {
 			}
 			return ret;
 		}
+		
+		@Override
+		public RimRow nextRow() {
+			int rowId = next();
+			return normalSearch.body.getRow(rowId);
+		}
 
 		@Override
 		public Comparable getValue() {
@@ -340,6 +596,8 @@ public class RimBody {
 	
 	// 検索管理オブジェクト雛形.
 	private static abstract class NormalSearch {
+		// RimBody.
+		protected RimBody body;
 		// body行列情報.
 		protected Object[] rows;
 		// 最大行番号.
@@ -364,6 +622,7 @@ public class RimBody {
 		 * @param columnNo
 		 */
 		protected void init(RimBody body, boolean ascFlag, boolean notEq, int columnNo) {
+			this.body = body;
 			this.rows = body.rows;
 			this.rowLength = this.rows.length;
 			this.columnNo = columnNo;
@@ -666,231 +925,4 @@ public class RimBody {
 		}
 		return no;
 	}
-
-	/**
-	 * 一致した検索条件を取得.
-	 * @param ascFlag 昇順で情報取得する場合は true.
-	 * @param notEq Not条件で検索する場合は true.
-	 * @param columnName 列名を設定します.
-	 * @param value 条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
-	 */
-	public ResultSearch<Integer> eq(boolean ascFlag,  boolean notEq,
-		String columnName, Object value) {
-		return eq(ascFlag, notEq, getColumnNameByNo(columnName), value);
-	}
-
-	/**
-	 * 一致した検索条件を取得.
-	 * @param ascFlag 昇順で情報取得する場合は true.
-	 * @param notEq Not条件で検索する場合は true.
-	 * @param columnNo 列番号を設定します.
-	 * @param value 条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
-	 */
-	public ResultSearch<Integer> eq(boolean ascFlag,  boolean notEq,
-		int columnNo, Object value) {
-		checkFix();
-		return new ResultSearchBody(new NormalSearchEq(
-				this, ascFlag, notEq, columnNo, value));
-	}
-	
-	/**
-	 * 大なり[>]の検索条件を取得.
-	 * @param ascFlag 昇順で情報取得する場合は true.
-	 * @param notEq Not条件で検索する場合は true.
-	 * @param columnName 列名を設定します.
-	 * @param value 条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
-	 */
-	public ResultSearch<Integer> gt(boolean ascFlag, boolean notEq,
-		String columnName, Object value) {
-		return gt(ascFlag, notEq, getColumnNameByNo(columnName), value);
-	}
-	
-	/**
-	 * 大なり[>]の検索条件を取得.
-	 * @param ascFlag 昇順で情報取得する場合は true.
-	 * @param notEq Not条件で検索する場合は true.
-	 * @param columnNo 列番号を設定します.
-	 * @param value 条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
-	 */
-	public ResultSearch<Integer> gt(boolean ascFlag, boolean notEq,
-		int columnNo, Object value) {
-		checkFix();
-		return new ResultSearchBody(new NormalSearchGT(
-				this, ascFlag, notEq, columnNo, value));
-	}
-	
-	/**
-	 * 大なり[>=]の検索条件を取得.
-	 * @param ascFlag 昇順で情報取得する場合は true.
-	 * @param notEq Not条件で検索する場合は true.
-	 * @param columnName 列名を設定します.
-	 * @param value 条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
-	 */
-	public ResultSearch<Integer> ge(boolean ascFlag, boolean notEq,
-		String columnName, Object value) {
-		return ge(ascFlag, notEq, getColumnNameByNo(columnName), value);
-	}
-	
-	/**
-	 * 大なり[>=]の検索条件を取得.
-	 * @param ascFlag 昇順で情報取得する場合は true.
-	 * @param notEq Not条件で検索する場合は true.
-	 * @param columnNo 列番号を設定します.
-	 * @param value 条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
-	 */
-	public ResultSearch<Integer> ge(boolean ascFlag, boolean notEq,
-		int columnNo, Object value) {
-		checkFix();
-		return new ResultSearchBody(new NormalSearchGE(
-				this, ascFlag, notEq, columnNo, value));
-	}
-	
-	/**
-	 * 小なり[<]の検索条件を取得.
-	 * @param ascFlag 昇順で情報取得する場合は true.
-	 * @param notEq Not条件で検索する場合は true.
-	 * @param columnName 列名を設定します.
-	 * @param value 条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
-	 */
-	public ResultSearch<Integer> lt(boolean ascFlag, boolean notEq,
-		String columnName, Object value) {
-		return lt(ascFlag, notEq, getColumnNameByNo(columnName), value);
-	}
-	
-	/**
-	 * 小なり[<]の検索条件を取得.
-	 * @param ascFlag 昇順で情報取得する場合は true.
-	 * @param notEq Not条件で検索する場合は true.
-	 * @param columnNo 列番号を設定します.
-	 * @param value 条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
-	 */
-	public ResultSearch<Integer> lt(boolean ascFlag, boolean notEq,
-		int columnNo, Object value) {
-		checkFix();
-		return new ResultSearchBody(new NormalSearchLT(
-				this, ascFlag, notEq, columnNo, value));
-	}
-	
-	/**
-	 * 小なり[<=]の検索条件を取得.
-	 * @param ascFlag 昇順で情報取得する場合は true.
-	 * @param notEq Not条件で検索する場合は true.
-	 * @param columnName 列名を設定します.
-	 * @param value 条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
-	 */
-	public ResultSearch<Integer> le(boolean ascFlag, boolean notEq,
-		String columnName, Object value) {
-		return le(ascFlag, notEq, getColumnNameByNo(columnName), value);
-	}
-	
-	/**
-	 * 小なり[<=]の検索条件を取得.
-	 * @param ascFlag 昇順で情報取得する場合は true.
-	 * @param notEq Not条件で検索する場合は true.
-	 * @param columnNo 列番号を設定します.
-	 * @param value 条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
-	 */
-	public ResultSearch<Integer> le(boolean ascFlag, boolean notEq,
-		int columnNo, Object value) {
-		checkFix();
-		return new ResultSearchBody(new NormalSearchLE(
-			this, ascFlag, notEq, columnNo, value));
-	}
-	
-	/**
-	 * 指定した start から end まで範囲検索.
-	 * @param ascFlag 昇順で情報取得する場合は true.
-	 * @param notEq Not条件で検索する場合は true.
-	 * @param columnName 列名を設定します.
-	 * @param start 開始条件を設定します.
-	 * @param end 終了条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
-	 */
-	public ResultSearch<Integer> between(
-		boolean ascFlag, boolean notEq, String columnName, Object start, Object end) {
-		return between(ascFlag, notEq, getColumnNameByNo(columnName), start, end);
-	}
-	
-	/**
-	 * 指定した start から end まで範囲検索.
-	 * @param ascFlag 昇順で情報取得する場合は true.
-	 * @param notEq Not条件で検索する場合は true.
-	 * @param columnNo 列番号を設定します.
-	 * @param start 開始条件を設定します.
-	 * @param end 終了条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
-	 */
-	public ResultSearch<Integer> between(
-		boolean ascFlag, boolean notEq, int columnNo, Object start, Object end) {
-		checkFix();
-		return new ResultSearchBody(new NormalSearchBetween(
-			this, ascFlag, notEq, columnNo, start, end));
-	}
-	
-	/**
-	 * 指定したvaluesに一致する内容を取得.
-	 * @param ascFlag 昇順で情報取得する場合は true.
-	 * @param notEq Not条件で検索する場合は true.
-	 * @param columnName 列名を設定します.
-	 * @param values 一致条件を複数設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
-	 */
-	public ResultSearch<Integer> in(
-		boolean ascFlag, boolean notEq, String columnName, Object... values) {
-		return in(ascFlag, notEq, getColumnNameByNo(columnName), values);
-	}
-	
-	/**
-	 * 指定したvaluesに一致する内容を取得.
-	 * @param ascFlag 昇順で情報取得する場合は true.
-	 * @param notEq Not条件で検索する場合は true.
-	 * @param columnNo 列番号を設定します.
-	 * @param values 一致条件を複数設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
-	 */
-	public ResultSearch<Integer> in(
-		boolean ascFlag, boolean notEq, int columnNo, Object... values) {
-		checkFix();
-		return new ResultSearchBody(new NormalSearchIn(
-			this, ascFlag, notEq, columnNo, values));
-	}
-
-	/**
-	 * Like検索条件を取得.
-	 * @param ascFlag 昇順で情報取得する場合は true.
-	 * @param notEq Not条件で検索する場合は true.
-	 * @param columnName 列名を設定します.
-	 * @param value 条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
-	 */
-	public ResultSearch<Integer> like(boolean ascFlag, boolean notEq,
-		String columnName, String value) {
-		return like(ascFlag, notEq, getColumnNameByNo(columnName), value);
-	}
-	
-	/**
-	 * Like検索条件を取得.
-	 * @param ascFlag 昇順で情報取得する場合は true.
-	 * @param notEq Not条件で検索する場合は true.
-	 * @param columnNo 列番号を設定します.
-	 * @param value 条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
-	 */
-	public ResultSearch<Integer> like(boolean ascFlag, boolean notEq,
-		int columnNo, String value) {
-		checkFix();
-		return new ResultSearchBody(new NormalSearchLike(
-			this, ascFlag, notEq, columnNo, value));
-	}
-
 }

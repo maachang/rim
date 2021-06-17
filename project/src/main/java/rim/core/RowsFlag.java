@@ -4,6 +4,7 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 
+import rim.core.Flags.FlagsIterator;
 import rim.exception.RimException;
 
 /**
@@ -18,8 +19,8 @@ public class RowsFlag {
 	 * @param length 全行数を設定します..
 	 */
 	public RowsFlag(int length) {
-		final int flagsLength = (length >> 14) +
-			((length & 0x00003fff) == 0 ? 0 : 1);
+		final int flagsLength = (length >> 12) +
+			((length & 0x00000fff) == 0 ? 0 : 1);
 		this.length = length;
 		this.rowsFlag = new Flags[flagsLength];
 	}
@@ -44,20 +45,20 @@ public class RowsFlag {
 			throw new RimException("Out of range (" +
 				length + " : " + no + "). ");
 		}
-		Flags flags = rowsFlag[no >> 14];
+		Flags flags = rowsFlag[no >> 12];
 		if(flag) {
 			if(flags == null) {
-				if(rowsFlag.length == (no >> 14) + 1) {
-					flags = new Flags(length & 0x00003fff);
+				if(rowsFlag.length == (no >> 12) + 1) {
+					flags = new Flags(length & 0x00000fff);
 				} else {
-					flags = new Flags(0x00003fff);
+					flags = new Flags(0x00000fff);
 				}
-				rowsFlag[no >> 14] = flags;
+				rowsFlag[no >> 12] = flags;
 			}
-			flags.put(no - ((no >> 14) << 14), true);
+			flags.put(no - ((no >> 12) << 12), true);
 		} else {
 			if(flags != null) {
-				flags.put(no - ((no >> 14) << 14), false);
+				flags.put(no - ((no >> 12) << 12), false);
 			}
 		}
 		return this;
@@ -73,11 +74,11 @@ public class RowsFlag {
 			throw new RimException("Out of range (" +
 				length + " : " + no + "). ");
 		}
-		final Flags flags = rowsFlag[no >> 14];
+		final Flags flags = rowsFlag[no >> 12];
 		if(flags == null) {
 			return false;
 		}
-		return flags.get(no - ((no >> 14) << 14));
+		return flags.get(no - ((no >> 12) << 12));
 	}
 	
 	/**
@@ -162,6 +163,7 @@ public class RowsFlag {
 		return new RowsIterator(ascFlag, rowsFlag);
 	}
 	
+	// RowsIterator.
 	private static final class RowsIterator
 		implements Iterator<Integer> {
 		// 昇順の場合 true.
@@ -170,14 +172,12 @@ public class RowsFlag {
 		private Flags[] rowsFlag;
 		// 現在読込中のFlags配列位置.
 		private int rowsPos;
-		// 現在読込中のFlags内の位置.
-		private int arrayPos;
-		// 現在読み込み中のFlags内の位置内の６４フラグの取得位置.
-		private int oneFlagPos;
 		// nowGetで情報取得が正しく行われた場合 true.
 		private boolean nowGetFlag;
-		// rowsPosとarrayPosを受け取る情報.
-		private final int[] out = new int[2];
+		// 元のFlagIterator.
+		private FlagsIterator src;
+		// 利用中のFlagsIterator.
+		private FlagsIterator inUse;
 		
 		/**
 		 * コンストラクタ.
@@ -185,70 +185,13 @@ public class RowsFlag {
 		 * @param lst Flags[] を設定します.
 		 */
 		RowsIterator(boolean ascFlag, Flags[] lst) {
-			final int len = lst.length;
-			// 最初のON条件を取得.
-			nextRowsPosAndArrayPos(
-				out, ascFlag, lst, ascFlag ? 0 : len - 1
-			);
 			this.ascFlag = ascFlag;
 			this.rowsFlag = lst;
-			this.rowsPos = out[0];
-			this.arrayPos = out[1];
-			this.oneFlagPos = ascFlag ? - 1 : Flags.getOneArrayLength();
 			this.nowGetFlag = false;
-		}
-		
-		/**
-		 * 次のRowPosとArrayPosを取得.
-		 * @param out [0]: RowPos, [1]: ArrayPos.
-		 * @param ascFlag 昇順の場合は true.
-		 * @param rowsFlag Flags[] を設定します.
-		 * @param nextRowsPos 次のRowPosを設定します.
-		 * @return boolean trueの場合は条件が見つかりました.
-		 */
-		private static final boolean nextRowsPosAndArrayPos(
-			int[] out, boolean ascFlag, Flags[] rowsFlag, int nextRowsPos) {
-			int pos;
-			if(ascFlag) {
-				final int len = rowsFlag.length;
-				// rowsFlagから設定されているFlagsを取得.
-				for(int i = nextRowsPos; i < len; i ++) {
-					// 空で無いFlagsが見つかった場合.
-					if(rowsFlag[i] != null) {
-						// 次のON条件があるFlag配列位置条件を探す.
-						pos = rowsFlag[i].searchOnByGetArrayPos(true, 0);
-						if(pos != -1) {
-							// 存在する場合.
-							out[0] = i;
-							out[1] = pos;
-							return true;
-						}
-					}
-				}
-				// 終端を検出.
-				out[0] = len;
-				out[1] = -1;
-			} else {
-				// rowsFlagから設定されているFlagsを取得.
-				for(int i = nextRowsPos; i >= 0; i --) {
-					// 空で無いFlagsが見つかった場合.
-					if(rowsFlag[i] != null) {
-						// 次のON条件があるFlag配列位置条件を探す.
-						pos = rowsFlag[i].searchOnByGetArrayPos(
-							false, rowsFlag[i].getArrayLength() - 1);
-						if(pos != -1) {
-							// 存在する場合.
-							out[0] = i;
-							out[1] = pos;
-							return true;
-						}
-					}
-				}
-				// 終端を検出.
-				out[0] = -1;
-				out[1] = -1;
-			}
-			return false;
+			this.rowsPos = ascFlag ? -1 : lst.length;
+			this.src = new FlagsIterator();
+			this.inUse = null;
+			nowGet();
 		}
 		
 		// 次の情報を読み込む.
@@ -257,92 +200,44 @@ public class RowsFlag {
 			if(nowGetFlag) {
 				return true;
 			}
-			int pos;
-			Flags flags;
+			// 利用中のFlagsのIteratorが存在する場合.
+			if(inUse != null) {
+				if(inUse.hasNext()) {
+					nowGetFlag = true;
+					return true;
+				}
+				// 終端の場合は新しく取り出す.
+				inUse = null;
+			}
 			// 昇順.
 			if(ascFlag) {
 				final int len = rowsFlag.length;
-				while(true) {
-					// 終端まで読み込んでる場合.
-					if(rowsPos >= len) {
-						return false;
-					}
-					// 対象のフラグ情報を取得.
-					flags = rowsFlag[rowsPos];
-					
-					// フラグがONの位置を取得.
-					pos = flags.searchOnByGetOneFlag(
-						true, arrayPos, oneFlagPos + 1);
-					if(pos != -1) {
-						// 存在する場合.
-						oneFlagPos = pos;
-						nowGetFlag = true;
-						return true;
-					}
-					// 初期位置.
-					oneFlagPos = -1;
-					
-					// 取得できない場合、次のON条件があるFlag配列位置条件を探す.
-					pos = flags.searchOnByGetArrayPos(true, arrayPos + 1);
-					if(pos != -1) {
-						// 存在する場合.
-						arrayPos = pos;
-						continue;
-					}
-					
-					// 次のRowsPosとArrayPos位置を取得.
-					if(nextRowsPosAndArrayPos(out, ascFlag, rowsFlag, rowsPos + 1)) {
-						// 存在する場合.
-						rowsPos = out[0];
-						arrayPos = out[1];
-					} else {
-						// 終端まで読み込んだ場合.
-						rowsPos = len;
-						return false;
+				for(int i = rowsPos + 1; i < len; i ++) {
+					if(rowsFlag[i] != null) {
+						if(src.create(ascFlag, rowsFlag[i])
+							.hasNext()) {
+							inUse = src;
+							rowsPos = i;
+							nowGetFlag = true;
+							return true;
+						}
 					}
 				}
 			// 降順.
 			} else {
-				while(true) {
-					// 終端まで読み込んでる場合.
-					if(rowsPos < 0) {
-						return false;
-					}
-					// 対象のフラグ情報を取得.
-					flags = rowsFlag[rowsPos];
-					
-					// フラグがONの位置を取得.
-					pos = flags.searchOnByGetOneFlag(
-						false, arrayPos, oneFlagPos - 1);
-					if(pos != -1) {
-						// 存在する場合.
-						oneFlagPos = pos;
-						nowGetFlag = true;
-						return true;
-					}
-					// 初期位置.
-					oneFlagPos = Flags.getOneArrayLength();
-					
-					// 取得できない場合、次のON条件があるFlag配列位置条件を探す.
-					pos = flags.searchOnByGetArrayPos(false, arrayPos - 1);
-					if(pos != -1) {
-						// 存在する場合.
-						arrayPos = pos;
-						continue;
-					}
-					
-					// 次のRowsPosとArrayPos位置を取得.
-					if(nextRowsPosAndArrayPos(out, ascFlag, rowsFlag, rowsPos - 1)) {
-						// 存在する場合.
-						rowsPos = out[0];
-						arrayPos = out[1];
-					} else {
-						// 終端まで読み込んだ場合.
-						rowsPos = -1;
-						return false;
+				for(int i = rowsPos - 1; i >= 0; i --) {
+					if(rowsFlag[i] != null) {
+						if(src.create(ascFlag, rowsFlag[i])
+							.hasNext()) {
+							inUse = src;
+							rowsPos = i;
+							nowGetFlag = true;
+							return true;
+						}
 					}
 				}
 			}
+			return false;
 		}
 		
 		@Override
@@ -356,35 +251,112 @@ public class RowsFlag {
 				throw new NoSuchElementException();
 			}
 			nowGetFlag = false;
-			return ((rowsPos << 14) + (arrayPos << 6) + oneFlagPos);
+			return (rowsPos << 12) + inUse.next();
 		}
 	}
 	
-	/**
+	/*
+	// main.
 	public static final void main(String[] args) {
-		final RowsFlag rowsFlag = new RowsFlag(5000000);
+		bench(args);
+		//check(args);
+	}
+	
+	// チェック処理.
+	private static final void check(String[] args) {
+		boolean ascFlag = false;
+		int allLen = 5000000;
 		
 		final int[] posList = new int[] {
-			0, 3332, 10000, 50000, 88000, 325442, 988824, 3152001, 4243562, 4999999
+			0, 3332, 10000, 50000, 88000, 325442, 988824, 999999
 		};
+		final RowsFlag rowsFlag = new RowsFlag(allLen);
+		
 		final int len = posList.length;
 		for(int i = 0; i < len; i ++) {
 			rowsFlag.put(posList[i], true);
 		}
 		
-		Iterator<Integer> itr = rowsFlag.iterator(false);
+		final Iterator<Integer> itr = rowsFlag.iterator(ascFlag);
 		while(itr.hasNext()) {
 			System.out.println(itr.next());
 		}
-		
-		System.out.println();
-		
-		int rowsLen = rowsFlag.getLength();
-		for(int i = 0; i < rowsLen; i ++) {
-			if(rowsFlag.get(i)) {
-				System.out.println(i);
-			}
-		}
 	}
-	**/
+	
+	// 計測系ベンチマーク.
+	private static final void bench(String[] args) {
+		long t, a, b, c, d, e, f, g, h;
+		a = b = c = d = e = f = g = h = 0L;
+		
+		int allLen = 1000000;
+		
+		//final int[] posList = new int[] {
+		//	0, 3332, 10000, 50000, 88000, 325442, 988824, 999999
+		//};
+		int cnt = 0;
+		int waru = 100;
+		Integer[] posList = new Integer[(allLen / waru) + ((allLen % waru) != 0 ? 1 : 0)];
+		for(int i = 0; i < allLen; i += waru) {
+			posList[cnt ++] = i;
+		}
+		
+		for(int xx = 0; xx < 5; xx ++) {
+		for(int r = 0; r < 1000; r ++) {
+			
+			t = System.currentTimeMillis();
+			final RowsFlag rowsFlag = new RowsFlag(allLen);
+			a += System.currentTimeMillis() - t;
+			
+			t = System.currentTimeMillis();
+			final int len = posList.length;
+			for(int i = 0; i < len; i ++) {
+				rowsFlag.put(posList[i], true);
+			}
+			b += System.currentTimeMillis() - t;
+			
+			t = System.currentTimeMillis();
+			final Iterator<Integer> itr = rowsFlag.iterator(false);
+			while(itr.hasNext()) {
+				//System.out.println(itr.next());
+				itr.next();
+			}
+			c += System.currentTimeMillis() - t;
+			
+			//System.out.println();
+			
+//			t = System.currentTimeMillis();
+//			final int rowsLen = rowsFlag.getLength();
+//			for(int i = 0; i < rowsLen; i ++) {
+//				if(rowsFlag.get(i)) {
+//					//System.out.println(i);
+//				}
+//			}
+//			d += System.currentTimeMillis() - t;
+			
+			t = System.currentTimeMillis();
+			final boolean[] testFlag = new boolean[allLen];
+			for(int i = 0; i < len; i ++) {
+				testFlag[posList[i]] = true;
+			}
+			e += System.currentTimeMillis() - t;
+			
+			t = System.currentTimeMillis();
+			final int testFlagLength = testFlag.length;
+			for(int i = 0; i < testFlagLength; i ++) {
+				if(testFlag[i]) {
+					//System.out.println(i);
+				}
+			}
+			f += System.currentTimeMillis() - t;
+		}}
+		
+		System.out.println("a: " + a + " msec");
+		System.out.println("b: " + b + " msec");
+		System.out.println("c: " + c + " msec");
+//		System.out.println("d: " + d + " msec");
+		System.out.println("e: " + e + " msec");
+		System.out.println("f: " + f + " msec");
+
+	}
+	*/
 }

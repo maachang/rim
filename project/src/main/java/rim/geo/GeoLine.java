@@ -1,4 +1,4 @@
-package rim.core.geo;
+package rim.geo;
 
 /**
  * [正確＋低速版]緯度経度間の直線距離計算.

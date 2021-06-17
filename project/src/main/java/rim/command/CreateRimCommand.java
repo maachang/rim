@@ -1,10 +1,10 @@
 package rim.command;
 
 import rim.RimConstants;
+import rim.SaveRim;
 import rim.compress.CompressType;
 import rim.compress.Lz4Compress;
 import rim.compress.ZstdCompress;
-import rim.core.SaveRim;
 import rim.util.Args;
 import rim.util.CsvReader;
 import rim.util.FileUtil;

@@ -1,6 +1,8 @@
 package rim.core;
 
 import java.util.Arrays;
+import java.util.Iterator;
+import java.util.NoSuchElementException;
 
 import rim.exception.RimException;
 
@@ -8,7 +10,7 @@ import rim.exception.RimException;
  * 指定長のフラグ配列を管理します.
  */
 public class Flags {
-	private long[] flags;
+	private int[] flags;
 	private int length;
 	
 	/**
@@ -16,10 +18,10 @@ public class Flags {
 	 * @param length 管理するフラグ配列数を設定します.
 	 */
 	public Flags(int length) {
-		final int flagsLength = (length >> 6) +
-			((length & 0x003f) == 0 ? 0 : 1);
+		final int flagsLength = (length >> 5) +
+			((length & 0x001f) == 0 ? 0 : 1);
 		this.length = length;
-		this.flags = new long[flagsLength];
+		this.flags = new int[flagsLength];
 	}
 	
 	/**
@@ -39,9 +41,9 @@ public class Flags {
 	 */
 	public Flags put(int no, boolean flag) {
 		if(flag) {
-			flags[no >> 6] |= 1L << (long)(no & 0x003f);
+			flags[no >> 5] |= 1 << (no & 0x001f);
 		} else {
-			flags[no >> 6] &= ~(1L << (long)(no & 0x003f));
+			flags[no >> 5] &= ~(1 << (no & 0x001f));
 		}
 		return this;
 	}
@@ -52,7 +54,8 @@ public class Flags {
 	 * @return boolean 設定されているフラグが返却されます.
 	 */
 	public boolean get(int no) {
-		return (flags[no >> 6] & (1L << (long)(no & 0x003f))) != 0;
+		return (flags[no >> 5] &
+			(1 << (no & 0x001f))) != 0;
 	}
 	
 	/**
@@ -70,7 +73,7 @@ public class Flags {
 	 * @return Flags このオブジェクトが返却されます.
 	 */
 	public Flags and(Flags value) {
-		long[] v = value.flags;
+		int[] v = value.flags;
 		int len = v.length;
 		if(len != flags.length) {
 			throw new RimException("Must be the same length.");
@@ -88,7 +91,7 @@ public class Flags {
 	 * @return Flags このオブジェクトが返却されます.
 	 */
 	public Flags or(Flags value) {
-		long[] v = value.flags;
+		int[] v = value.flags;
 		int len = v.length;
 		if(len != flags.length) {
 			throw new RimException("Must be the same length.");
@@ -110,89 +113,126 @@ public class Flags {
 	}
 	
 	/**
-	 * Flag配列長を取得.
-	 * @return int Flag配列長が返却されます.
+	 * 有効な行番号を取得するIteratorを取得.
+	 * @param ascFlag 昇順取得の場合は true.
+	 * @return Iterator<Integer> 有効な行番号を返却する
+	 *                           Iteratorが返却されます.
 	 */
-	protected int getArrayLength() {
-		return flags.length;
+	public Iterator<Integer> iterator(boolean ascFlag) {
+		return new FlagsIterator(ascFlag, this);
 	}
 	
-	/**
-	 * フラグONが含まれるFlag配列位置を検索して取得.
-	 * @param ascFlag trueの場合、昇順で検索します.
-	 * @param offArrayPos Flag配列開始位置を設定します.
-	 * @return int フラグONが含まれるFlag配列位置が返却されます.
-	 *             -1の場合、存在しません.
-	 */
-	protected int searchOnByGetArrayPos(boolean ascFlag, int offArrayPos) {
-		if(ascFlag) {
-			final int len = flags.length;
-			for(int i = offArrayPos; i < len; i ++) {
-				if(flags[i] != 0L) {
-					return i;
-				}
-			}
-		} else {
-			for(int i = offArrayPos; i >= 0; i --) {
-				if(flags[i] != 0L) {
-					return i;
-				}
-			}
+	// FlagsIterator.
+	protected static final class FlagsIterator
+		implements Iterator<Integer> {
+		private Flags flags;
+		private int arrayPos;
+		private int oneFlagPos;
+		
+		private boolean ascFlag;
+		private boolean nowGetFlag;
+		private boolean eofFlag;
+		
+		protected FlagsIterator() {
 		}
-		return -1;
-	}
-	
-	/**
-	 * Flag配列位置と１つのFlagに対する開始位置を設定して
-	 * 次のFlagがONの位置を取得.
-	 * @param ascFlag true の場合昇順.
-	 * @param arrayPos Flag配列位置を設定します.
-	 * @param offOneFlagPos １つのFlagに対する開始位置を設定します.
-	 * @return int フラグONの１つのFlagに対する位置が返却されます.
-	 *             -1の場合、存在しません.
-	 */
-	protected int searchOnByGetOneFlag(boolean ascFlag, int arrayPos, int offOneFlagPos) {
-		long value = flags[arrayPos];
-		if(ascFlag) {
-			final int len = getOneArrayLength();
-			for(int i = offOneFlagPos; i < len; i ++) {
-				if((value & (1L << (long)i)) != 0) {
-					return i;
-				}
-			}
-		} else {
-			for(int i = offOneFlagPos; i >= 0; i --) {
-				if((value & (1L << (long)i)) != 0) {
-					return i;
-				}
-			}
+		
+		/**
+		 * 生成処理.
+		 * @param ascFlag 昇順の場合は true.
+		 * @param flags Flagsオブジェクトを設定します.
+		 */
+		protected FlagsIterator(boolean ascFlag, Flags flags) {
+			create(ascFlag, flags);
 		}
-		return -1;
-	}
-	
-	/**
-	 * 番号からFlag配列位置番号に変換.
-	 * @param no 番号を設定します.
-	 * @return int Flag配列位置番号が返却されます.
-	 */
-	protected static final int convertNumberByArrayPos(int no) {
-		return no >> 6;
-	}
-	
-	/**
-	 * Flag配列位置から番号に変換.
-	 * @param arrayNo Flag配列位置番号を設定します.
-	 * @return 番号が返却されます.
-	 */
-	protected static final int convertArrayPosByNumber(int arrayNo) {
-		return arrayNo << 6;
-	}
-	
-	/**
-	 * １つのFlag配列の長さを取得.
-	 * @return int １つのFlag配列の長さが返却されます.
-	 */
-	protected static final int getOneArrayLength() {
-		return 0x0040;
+		
+		/**
+		 * 生成処理.
+		 * @param ascFlag 昇順の場合は true.
+		 * @param flags Flagsオブジェクトを設定します.
+		 * @return FlagsIterator このオブジェクトが返却されます.
+		 */
+		protected final FlagsIterator create(boolean ascFlag, Flags flags) {
+			this.ascFlag = ascFlag;
+			this.flags = flags;
+			this.arrayPos = ascFlag ? -1 : flags.flags.length;
+			this.oneFlagPos = -2;
+			
+			this.nowGetFlag = false;
+			this.eofFlag = false;
+			
+			nowGet();
+			return this;
+		}
+		
+		/**
+		 * 次の情報を取得.
+		 * @return boolean true の場合次の情報は存在します.
+		 */
+		private boolean nowGet() {
+			if(nowGetFlag) {
+				return true;
+			}
+			int oneFlag;
+			final int[] lst = flags.flags;
+			final int len = lst.length;
+			while(!eofFlag) {
+				if(oneFlagPos != -2) {
+					oneFlag = lst[arrayPos];
+					if(ascFlag) {
+						for(int i = oneFlagPos + 1; i < 32; i ++) {
+							if((oneFlag & (1 << i)) != 0) {
+								oneFlagPos = i;
+								nowGetFlag = true;
+								return true;
+							}
+						}
+					} else {
+						for(int i = oneFlagPos - 1; i >= 0; i --) {
+							if((oneFlag & (1 << i)) != 0) {
+								oneFlagPos = i;
+								nowGetFlag = true;
+								return true;
+							}
+						}
+					}
+					oneFlagPos = -2;
+				}
+				eofFlag = true;
+				if(ascFlag) {
+					for(int i = arrayPos + 1; i < len; i ++) {
+						if(lst[i] != 0) {
+							arrayPos = i;
+							oneFlagPos = -1;
+							eofFlag = false;
+							break;
+						}
+					}
+				} else {
+					for(int i = arrayPos - 1; i >= 0; i --) {
+						if(lst[i] != 0) {
+							arrayPos = i;
+							oneFlagPos = 32;
+							eofFlag = false;
+							break;
+						}
+					}
+				}
+			}
+			return false;
+		}
+
+		@Override
+		public boolean hasNext() {
+			return nowGet();
+		}
+
+		@Override
+		public Integer next() {
+			if(!nowGet()) {
+				throw new NoSuchElementException();
+			}
+			nowGetFlag = false;
+			return (arrayPos << 5) + oneFlagPos;
+		}
 	}
 }

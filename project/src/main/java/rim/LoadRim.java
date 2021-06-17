@@ -1,4 +1,4 @@
-package rim.core;
+package rim;
 
 import java.io.BufferedInputStream;
 import java.io.FileInputStream;
@@ -7,13 +7,17 @@ import java.io.InputStream;
 import java.util.Date;
 import java.util.zip.GZIPInputStream;
 
-import rim.Rim;
-import rim.RimConstants;
 import rim.compress.CompressBuffer;
 import rim.compress.CompressType;
 import rim.compress.Lz4Compress;
 import rim.compress.ZstdCompress;
+import rim.core.ColumnType;
+import rim.core.RbInputStream;
+import rim.core.RbbOutputStream;
+import rim.core.RimUtil;
 import rim.exception.RimException;
+import rim.index.RimGeoIndex;
+import rim.index.RimIndex;
 import rim.util.UTF8IO;
 import rim.util.seabass.SeabassCompress;
 import rim.util.seabass.SeabassCompressBuffer;
@@ -134,17 +138,13 @@ public class LoadRim {
 			readBinary(params.tmp, in, 2);
 			final int indexLength = bin2Int(params.tmp);
 			
-			//System.out.println(" columnLength: " + columnLength
-			//		+ " stringHeaderLength: " + params.stringHeaderLength
-			//		+ " rowAll: " + rowAll
-			//		+ " byte1_4Len: " + params.byte1_4Len
-			//		+ " compressType: " + compressType
-			//		+ " indexLength: " + indexLength
-			//);
+			// 登録されているGeoインデックス数を取得.
+			readBinary(params.tmp, in, 2);
+			final int geoIndexLength = bin2Int(params.tmp);
 			
 			// 返却するRimオブジェクトを生成.
 			final RimBody body = new RimBody(columns, columnTypes, rowAll);
-			final Rim ret = new Rim(body, indexLength);
+			final Rim ret = new Rim(body, indexLength, geoIndexLength);
 			columns = null;
 			
 			// Body情報を取得.
@@ -154,6 +154,9 @@ public class LoadRim {
 			
 			// 登録インデックスを取得.
 			readIndex(ret, in, params, compressType, indexLength);
+			
+			// 登録Geoインデックスを取得.
+			readGeoIndex(ret, in, params, compressType, indexLength);
 			
 			// fix.
 			ret.fix();
@@ -166,6 +169,215 @@ public class LoadRim {
 				try {
 					in.close();
 				} catch(Exception e) {}
+			}
+		}
+	}
+	
+	// bodyを取得.
+	private static final void readBody(Rim out, RimBody body, InputStream in,
+		RimParams params, ColumnType[] columnTypes, CompressType compressType,
+		int columnLength, int rowAll) throws IOException {
+		int i, len;
+		byte[] data;
+		Object[] columns;
+		RbInputStream rbIn;
+		final int[] dataLen = new int[1];
+		for(i = 0; i < columnLength; i ++) {
+			
+			// 圧縮フラグを取得.
+			boolean compFlag = readBoolean(in, params.tmp);
+			
+			// データ塊長を取得.
+			len = readInteger(in, params.tmp);
+			
+			// 塊受付バッファサイズが小さい場合.
+			if(params.chunkedBuffer.length < len) {
+				// lenに合わせて再生成.
+				params.chunkedBuffer = new byte[len];
+			}
+			
+			// 塊データを取得.
+			readBinary(params.chunkedBuffer, in, len);
+			
+			// 圧縮されている場合、塊を解凍して取得.
+			data = readDecompress(dataLen, compressType, params, compFlag, len);
+			
+			// 塊情報をRbInputStreamに置き換える.
+			rbIn = new RbInputStream(data, 0, dataLen[0]);
+			
+			// １つの列の全行情報を作成.
+			columns = new Object[rowAll];
+			
+			// 1つの列の全行情報を取得.
+			getValues(columns, rbIn, params, columnTypes[i]);
+			
+			// bodyに列の全行情報をセット.
+			body.setColumns(i, columns);
+			
+			// クリア.
+			columns = null;
+			rbIn = null;
+		}
+	}
+
+	// 登録インデックスを取得.
+	private static final void readIndex(Rim out, InputStream in, RimParams params,
+		CompressType compressType, int indexLength) throws IOException {
+		int columnNo;
+		int planIndexSize;
+		RimIndex index;
+
+		
+		// 全体のインデックス情報のループ.
+		for(int i = 0; i < indexLength; i ++) {
+			
+			// 対象インデックスの列番号を取得.
+			readBinary(params.tmp, in, 2);
+			columnNo = bin2Int(params.tmp);
+			
+			// 対象インデックスの総行数を取得.
+			readBinary(params.tmp, in, params.byte1_4Len);
+			planIndexSize = bin1_4Int(params);
+			
+			// 今回処理するインデックスを登録.
+			index = out.registerIndex(columnNo, planIndexSize);
+			
+			// １つのインデックスを読み込む.
+			readOneIndex(in, params, compressType, index, planIndexSize);
+		}
+	}
+	
+	// 登録Geoインデックスを取得.
+	private static final void readGeoIndex(Rim out, InputStream in, RimParams params,
+		CompressType compressType, int indexLength) throws IOException {
+		int latColumnNo;
+		int lonColumnNo;
+		int planIndexSize;
+		RimGeoIndex index;
+		
+		// 全体のインデックス情報のループ.
+		for(int i = 0; i < indexLength; i ++) {
+			
+			// 緯度列番号を取得.
+			readBinary(params.tmp, in, 2);
+			latColumnNo = bin2Int(params.tmp);
+			
+			// 経度列番号を取得.
+			readBinary(params.tmp, in, 2);
+			lonColumnNo = bin2Int(params.tmp);
+			
+			// 対象インデックスの総行数を取得.
+			readBinary(params.tmp, in, params.byte1_4Len);
+			planIndexSize = bin1_4Int(params);
+			
+			// 今回処理するインデックスを登録.
+			index = out.registerGeoIndex(
+				latColumnNo, lonColumnNo, planIndexSize);
+			
+			// １つのインデックスを読み込む.
+			readOneIndex(in, params, compressType, index, planIndexSize);
+		}
+	}
+	
+	// １つのインデックス情報を読み込む.
+	@SuppressWarnings("rawtypes")
+	private static final void readOneIndex(InputStream in, RimParams params,
+		CompressType compressType, Object index, int planIndexSize)
+		throws IOException {
+		
+		int i, len;
+		int rowIdLength;
+		Object value;
+		int[] rowIdList = null;
+		
+		byte[] data;
+		RbInputStream rbIn;
+		final int[] dataLen = new int[1];
+		
+		// インデックスタイプを取得.
+		int indexType = -1;
+		if(index instanceof RimIndex) {
+			indexType = 0;
+		} else if(index instanceof RimGeoIndex) {
+			indexType = 1;
+		}
+		
+		// このインデックスの列型を取得.
+		ColumnType columnType = null;
+		switch(indexType) {
+		case 0: // RimIndex.
+			columnType = ((RimIndex)index).getColumnType();
+			break;
+		case 1: // RimGeoIndex.
+			columnType = ColumnType.Long;
+			break;
+		}
+		
+		// 圧縮フラグを取得.
+		boolean compFlag = readBoolean(in, params.tmp);
+		
+		// データ塊長を取得.
+		len = readInteger(in, params.tmp);
+		
+		// 塊受付バッファサイズが小さい場合.
+		if(params.chunkedBuffer.length < len) {
+			// lenに合わせて再生成.
+			params.chunkedBuffer = new byte[len];
+		}
+		
+		// 塊データを取得.
+		readBinary(params.chunkedBuffer, in, len);
+		
+		// 圧縮されている場合、塊を解凍して取得.
+		data = readDecompress(
+			dataLen, compressType, params, compFlag, len);
+		
+		// 塊情報をRbInputStreamに置き換える.
+		rbIn = new RbInputStream(data, 0, dataLen[0]);
+		
+		// インデックス追加完了までループ.
+		while(true) {
+			
+			// 1つの最適化されたインデックス情報を取得.
+			value = getValue(rbIn, params, columnType);
+			
+			// 1つの同一要素に対する行番号数を取得.
+			readBinary(params.tmp, rbIn, params.byte1_4Len);
+			rowIdLength = bin1_4Int(params);
+			
+			// RowIdList のバッファが足りない場合は生成.
+			if(rowIdList == null || rowIdList.length < rowIdLength) {
+				rowIdList = new int[rowIdLength];
+			}
+			
+			// RowIdListをセット.
+			for(i = 0; i < rowIdLength; i ++) {
+				readBinary(params.tmp, rbIn, params.byte1_4Len);
+				rowIdList[i] = bin1_4Int(params);
+			}
+			
+			// 対象のインデックスに情報を追加.
+			switch(indexType) {
+			case 0: // RimIndex.
+				len = ((RimIndex)index).add(
+					(Comparable)value, rowIdList, rowIdLength);
+				break;
+			case 1: // RimGeoIndex.
+				len = ((RimGeoIndex)index).add(
+					(Long)value, rowIdList, rowIdLength);
+				break;
+			}
+			
+			// 予定長の取得が行われた場合.
+			if(planIndexSize <= len) {
+				// 予定長より大きな情報取得が行われた場合は例外出力.
+				if(planIndexSize != len) {
+					throw new RimException(
+						"Information larger than the expected index length(" +
+						planIndexSize + ") was read: " + len);
+				}
+				// このインデックス追加が完了した場合.
+				break;
 			}
 		}
 	}
@@ -533,148 +745,6 @@ public class LoadRim {
 		throw new RimException("Unknown column type: " + type);
 	}
 
-	// bodyを取得.
-	private static final void readBody(Rim out, RimBody body, InputStream in,
-		RimParams params, ColumnType[] columnTypes, CompressType compressType,
-		int columnLength, int rowAll) throws IOException {
-		int i, len;
-		byte[] data;
-		Object[] columns;
-		RbInputStream rbIn;
-		final int[] dataLen = new int[1];
-		for(i = 0; i < columnLength; i ++) {
-			
-			// 圧縮フラグを取得.
-			boolean compFlag = readBoolean(in, params.tmp);
-			
-			// データ塊長を取得.
-			len = readInteger(in, params.tmp);
-			
-			// 塊受付バッファサイズが小さい場合.
-			if(params.chunkedBuffer.length < len) {
-				// lenに合わせて再生成.
-				params.chunkedBuffer = new byte[len];
-			}
-			
-			// 塊データを取得.
-			readBinary(params.chunkedBuffer, in, len);
-			
-			// 圧縮されている場合、塊を解凍して取得.
-			data = readDecompress(dataLen, compressType, params, compFlag, len);
-			
-			// 塊情報をRbInputStreamに置き換える.
-			rbIn = new RbInputStream(data, 0, dataLen[0]);
-			
-			// １つの列の全行情報を作成.
-			columns = new Object[rowAll];
-			
-			// 1つの列の全行情報を取得.
-			getValues(columns, rbIn, params, columnTypes[i]);
-			
-			// bodyに列の全行情報をセット.
-			body.setColumns(i, columns);
-			
-			// クリア.
-			columns = null;
-			rbIn = null;
-		}
-	}
-
-	// 登録インデックスを取得.
-	@SuppressWarnings("rawtypes")
-	private static final void readIndex(Rim out, InputStream in, RimParams params,
-		CompressType compressType, int indexLength) throws IOException {
-		
-		int i, j, len;
-		int columnNo;
-		int planIndexSize;
-		int rowIdLength;
-		Object value;
-		RimIndex index;
-		ColumnType columnType;
-		int[] rowIdList = null;
-		
-		byte[] data;
-		RbInputStream rbIn;
-		final int[] dataLen = new int[1];
-
-		
-		// 全体のインデックス情報のループ.
-		for(i = 0; i < indexLength; i ++) {
-			
-			// 対象インデックスの列番号を取得.
-			readBinary(params.tmp, in, 2);
-			columnNo = bin2Int(params.tmp);
-			
-			// 対象インデックスの総行数を取得.
-			readBinary(params.tmp, in, params.byte1_4Len);
-			planIndexSize = bin1_4Int(params);
-			
-			// 今回処理するインデックスを登録.
-			index = out.registerIndex(columnNo, planIndexSize);
-			
-			// このインデックスの列型を取得.
-			columnType = index.getColumnType();
-			
-			// 圧縮フラグを取得.
-			boolean compFlag = readBoolean(in, params.tmp);
-			
-			// データ塊長を取得.
-			len = readInteger(in, params.tmp);
-			
-			// 塊受付バッファサイズが小さい場合.
-			if(params.chunkedBuffer.length < len) {
-				// lenに合わせて再生成.
-				params.chunkedBuffer = new byte[len];
-			}
-			
-			// 塊データを取得.
-			readBinary(params.chunkedBuffer, in, len);
-			
-			// 圧縮されている場合、塊を解凍して取得.
-			data = readDecompress(dataLen, compressType, params, compFlag, len);
-			
-			// 塊情報をRbInputStreamに置き換える.
-			rbIn = new RbInputStream(data, 0, dataLen[0]);
-			
-			// インデックス追加完了までループ.
-			while(true) {
-				
-				// 1つの最適化されたインデックス情報を取得.
-				value = getValue(rbIn, params, columnType);
-				
-				// 1つの同一要素に対する行番号数を取得.
-				readBinary(params.tmp, rbIn, params.byte1_4Len);
-				rowIdLength = bin1_4Int(params);
-				
-				// RowIdList のバッファが足りない場合は生成.
-				if(rowIdList == null || rowIdList.length < rowIdLength) {
-					rowIdList = new int[rowIdLength];
-				}
-				
-				// RowIdListをセット.
-				for(j = 0; j < rowIdLength; j ++) {
-					readBinary(params.tmp, rbIn, params.byte1_4Len);
-					rowIdList[j] = bin1_4Int(params);
-				}
-				
-				// 対象のインデックスに情報を追加.
-				len = index.add((Comparable)value, rowIdList, rowIdLength);
-				
-				// 予定長の取得が行われた場合.
-				if(planIndexSize <= len) {
-					// 予定長より大きな情報取得が行われた場合は例外出力.
-					if(planIndexSize != len) {
-						throw new RimException(
-							"Information larger than the expected index length(" +
-							planIndexSize + ") was read: " + len);
-					}
-					// このインデックス追加が完了した場合.
-					break;
-				}
-			}
-		}
-	}
 	
 	// test.
 	public static final void main(String[] args) throws Exception {
@@ -748,7 +818,7 @@ public class LoadRim {
 		RimBody body = rim.getBody();
 		RimIndex index = rim.getIndex(column);
 		
-		ResultSearch<Integer> ri;
+		RimResultSearch<Integer> ri;
 		
 		ri = null;
 		switch(execType) {
@@ -923,7 +993,7 @@ public class LoadRim {
 		//}}
 	}
 	
-	private static final void viewResultSearch(ResultSearch<Integer> ri, RimBody body, int maxCnt) {
+	private static final void viewResultSearch(RimResultSearch<Integer> ri, RimBody body, int maxCnt) {
 		int cnt = 0;
 		while(ri.hasNext()) {
 			if(cnt > maxCnt) {
