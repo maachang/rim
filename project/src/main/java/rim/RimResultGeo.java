@@ -3,8 +3,8 @@ package rim;
 /**
  * Geo検索結果の情報.
  */
-public interface RimResultGeoSearch<T>
-	extends RimResultSearch<T> {
+public interface RimResultGeo
+	extends RimResult {
 	
 	/**
 	 * 対象の緯度を取得.

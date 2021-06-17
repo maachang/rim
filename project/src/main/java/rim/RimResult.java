@@ -6,7 +6,7 @@ import java.util.Iterator;
  * 検索結果の情報.
  */
 @SuppressWarnings("rawtypes")
-public interface RimResultSearch<T> extends Iterator<T> {
+public interface RimResult extends Iterator<Integer> {
 	/**
 	 * 次の行情報を取得.
 	 * @return RimRow 行情報が返却されます.

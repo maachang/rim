@@ -18,6 +18,7 @@ import rim.core.RimUtil;
 import rim.exception.RimException;
 import rim.index.RimGeoIndex;
 import rim.index.RimIndex;
+import rim.util.FileUtil;
 import rim.util.UTF8IO;
 import rim.util.seabass.SeabassCompress;
 import rim.util.seabass.SeabassCompressBuffer;
@@ -156,7 +157,7 @@ public class LoadRim {
 			readIndex(ret, in, params, compressType, indexLength);
 			
 			// 登録Geoインデックスを取得.
-			readGeoIndex(ret, in, params, compressType, indexLength);
+			readGeoIndex(ret, in, params, compressType, geoIndexLength);
 			
 			// fix.
 			ret.fix();
@@ -748,10 +749,57 @@ public class LoadRim {
 	
 	// test.
 	public static final void main(String[] args) throws Exception {
-		testSearch(args);
+		testGeoSearch(args);
 	}
 	
-	/*
+	// [テスト用]Geo検索関連のテスト.
+	public static final void testGeoSearch(String[] args) throws Exception {
+		// 全国駅情報.
+		String file = "Z:/home/maachang/project/rim/sampleData/station.rim";
+		
+		// ロード処理.
+		Rim rim = load(file);
+		
+		// 駅の緯度経度インデックスを取得.
+		RimGeoIndex index = rim.getGeoIndex("lat", "lon");
+		
+		// ベンチマーク計測.
+		int benchLen = 100;
+		
+		boolean ascFlag = true;
+		// 東京タワーの周辺を検索.
+		double lat = 35.658581;
+		double lon = 139.745433;
+		int distance = 5000;
+		
+		RimResultGeo result;
+		
+		long time;
+		long all = 0L;
+		for(int i = 0; i < benchLen; i ++) {
+			time = System.currentTimeMillis();
+			result = index.searchRadius(ascFlag, lat, lon, distance);
+			//result = index.searchRadius(lat, lon, distance);
+			while(result.hasNext()) {
+				result.next();
+			}
+			all += System.currentTimeMillis() - time;
+		}
+		
+		result = index.searchRadius(ascFlag, lat, lon, distance);
+		//result = index.searchRadius(lat, lon, distance);
+		
+		int cnt = 0;
+		while(result.hasNext()) {
+			System.out.println("nextRow: " + result.nextRow());
+			System.out.println(" distance : " + result.getValue() + " m");
+			cnt ++;
+		}
+		System.out.println("駅 :" + cnt + " 件");
+		
+		System.out.println("time: " + (all) + " / " + benchLen + " msec");
+	}
+	
 	// [テスト用]対象ファイルのロード時間を計測.
 	protected static final void testLoadTime(String[] args) throws Exception {
 		String loadFileName;
@@ -783,7 +831,6 @@ public class LoadRim {
 		
 		System.exit(0);
 	}
-	*/
 	
 	// [テスト用]検索関連のテスト.
 	public static final void testSearch(String[] args) throws Exception {
@@ -818,7 +865,7 @@ public class LoadRim {
 		RimBody body = rim.getBody();
 		RimIndex index = rim.getIndex(column);
 		
-		RimResultSearch<Integer> ri;
+		RimResult ri;
 		
 		ri = null;
 		switch(execType) {
@@ -993,7 +1040,7 @@ public class LoadRim {
 		//}}
 	}
 	
-	private static final void viewResultSearch(RimResultSearch<Integer> ri, RimBody body, int maxCnt) {
+	private static final void viewResultSearch(RimResult ri, RimBody body, int maxCnt) {
 		int cnt = 0;
 		while(ri.hasNext()) {
 			if(cnt > maxCnt) {

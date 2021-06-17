@@ -67,10 +67,10 @@ public class Rim {
 	 */
 	protected RimGeoIndex registerGeoIndex(int latColumnNo, int lonColumnNo,
 		int planIndexSize) {
-		if(geoIndexs.size() != geoIndexLength) {
+		if(geoIndexs.size() >= geoIndexLength) {
 			throw new RimException(
 				"The number of geo indexes to be registered (" +
-				indexs.size() + ") has been exceeded: " +
+				geoIndexs.size() + ") has been exceeded: " +
 				geoIndexLength);
 		}
 		RimGeoIndex index = body.createGeoIndex(
@@ -102,7 +102,7 @@ public class Rim {
 		}
 		
 		// GeoインデックスをFixする.
-		len = indexs.size();
+		len = geoIndexs.size();
 		// 長さが一致しない場合.
 		if(geoIndexLength != len) {
 			throw new RimException(

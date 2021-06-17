@@ -4,10 +4,12 @@ import java.util.Iterator;
 import java.util.Map;
 
 /**
- * IndexMapオブジェクト.
+ * IndexKeyValueリスト.
  *
- * BinarySearchを使って、データの追加、削除、取得を行います. HashMapと比べると速度は１０倍ぐらいは遅いですが、リソースは
- * List構造のものと同じぐらいしか食わないので、リソースを重視 する場合は、こちらを利用することをおすすめします.
+ * BinarySearchを使って、データの追加、削除、取得を行います.
+ * HashMapと比べると速度は１０倍ぐらいは遅いですが、リソースは
+ * List構造のものと同じぐらいしか食わないので、リソースを重視
+ * する場合は、こちらを利用することをおすすめします.
  */
 @SuppressWarnings({ "rawtypes", "unchecked" })
 public class IndexKeyValueList<K, V> {

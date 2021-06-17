@@ -293,9 +293,9 @@ public class RimBody {
 	 * @param notEq Not条件で検索する場合は true.
 	 * @param columnName 列名を設定します.
 	 * @param value 条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 * @return RimResultSearch 検索結果が返却されます.
 	 */
-	public RimResultSearch<Integer> eq(boolean ascFlag,  boolean notEq,
+	public RimResult eq(boolean ascFlag,  boolean notEq,
 		String columnName, Object value) {
 		return eq(ascFlag, notEq, getColumnNameByNo(columnName), value);
 	}
@@ -306,9 +306,9 @@ public class RimBody {
 	 * @param notEq Not条件で検索する場合は true.
 	 * @param columnNo 列番号を設定します.
 	 * @param value 条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 * @return RimResultSearch 検索結果が返却されます.
 	 */
-	public RimResultSearch<Integer> eq(boolean ascFlag,  boolean notEq,
+	public RimResult eq(boolean ascFlag,  boolean notEq,
 		int columnNo, Object value) {
 		checkFix();
 		return new ResultSearchBody(new NormalSearchEq(
@@ -321,9 +321,9 @@ public class RimBody {
 	 * @param notEq Not条件で検索する場合は true.
 	 * @param columnName 列名を設定します.
 	 * @param value 条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 * @return RimResultSearch 検索結果が返却されます.
 	 */
-	public RimResultSearch<Integer> gt(boolean ascFlag, boolean notEq,
+	public RimResult gt(boolean ascFlag, boolean notEq,
 		String columnName, Object value) {
 		return gt(ascFlag, notEq, getColumnNameByNo(columnName), value);
 	}
@@ -334,9 +334,9 @@ public class RimBody {
 	 * @param notEq Not条件で検索する場合は true.
 	 * @param columnNo 列番号を設定します.
 	 * @param value 条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 * @return RimResultSearch 検索結果が返却されます.
 	 */
-	public RimResultSearch<Integer> gt(boolean ascFlag, boolean notEq,
+	public RimResult gt(boolean ascFlag, boolean notEq,
 		int columnNo, Object value) {
 		checkFix();
 		return new ResultSearchBody(new NormalSearchGT(
@@ -349,9 +349,9 @@ public class RimBody {
 	 * @param notEq Not条件で検索する場合は true.
 	 * @param columnName 列名を設定します.
 	 * @param value 条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 * @return RimResultSearch 検索結果が返却されます.
 	 */
-	public RimResultSearch<Integer> ge(boolean ascFlag, boolean notEq,
+	public RimResult ge(boolean ascFlag, boolean notEq,
 		String columnName, Object value) {
 		return ge(ascFlag, notEq, getColumnNameByNo(columnName), value);
 	}
@@ -362,9 +362,9 @@ public class RimBody {
 	 * @param notEq Not条件で検索する場合は true.
 	 * @param columnNo 列番号を設定します.
 	 * @param value 条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 * @return RimResultSearch 検索結果が返却されます.
 	 */
-	public RimResultSearch<Integer> ge(boolean ascFlag, boolean notEq,
+	public RimResult ge(boolean ascFlag, boolean notEq,
 		int columnNo, Object value) {
 		checkFix();
 		return new ResultSearchBody(new NormalSearchGE(
@@ -377,9 +377,9 @@ public class RimBody {
 	 * @param notEq Not条件で検索する場合は true.
 	 * @param columnName 列名を設定します.
 	 * @param value 条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 * @return RimResultSearch 検索結果が返却されます.
 	 */
-	public RimResultSearch<Integer> lt(boolean ascFlag, boolean notEq,
+	public RimResult lt(boolean ascFlag, boolean notEq,
 		String columnName, Object value) {
 		return lt(ascFlag, notEq, getColumnNameByNo(columnName), value);
 	}
@@ -390,9 +390,9 @@ public class RimBody {
 	 * @param notEq Not条件で検索する場合は true.
 	 * @param columnNo 列番号を設定します.
 	 * @param value 条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 * @return RimResultSearch 検索結果が返却されます.
 	 */
-	public RimResultSearch<Integer> lt(boolean ascFlag, boolean notEq,
+	public RimResult lt(boolean ascFlag, boolean notEq,
 		int columnNo, Object value) {
 		checkFix();
 		return new ResultSearchBody(new NormalSearchLT(
@@ -405,9 +405,9 @@ public class RimBody {
 	 * @param notEq Not条件で検索する場合は true.
 	 * @param columnName 列名を設定します.
 	 * @param value 条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 * @return RimResultSearch 検索結果が返却されます.
 	 */
-	public RimResultSearch<Integer> le(boolean ascFlag, boolean notEq,
+	public RimResult le(boolean ascFlag, boolean notEq,
 		String columnName, Object value) {
 		return le(ascFlag, notEq, getColumnNameByNo(columnName), value);
 	}
@@ -418,9 +418,9 @@ public class RimBody {
 	 * @param notEq Not条件で検索する場合は true.
 	 * @param columnNo 列番号を設定します.
 	 * @param value 条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 * @return RimResultSearch 検索結果が返却されます.
 	 */
-	public RimResultSearch<Integer> le(boolean ascFlag, boolean notEq,
+	public RimResult le(boolean ascFlag, boolean notEq,
 		int columnNo, Object value) {
 		checkFix();
 		return new ResultSearchBody(new NormalSearchLE(
@@ -434,9 +434,9 @@ public class RimBody {
 	 * @param columnName 列名を設定します.
 	 * @param start 開始条件を設定します.
 	 * @param end 終了条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 * @return RimResultSearch 検索結果が返却されます.
 	 */
-	public RimResultSearch<Integer> between(
+	public RimResult between(
 		boolean ascFlag, boolean notEq, String columnName, Object start, Object end) {
 		return between(ascFlag, notEq, getColumnNameByNo(columnName), start, end);
 	}
@@ -448,9 +448,9 @@ public class RimBody {
 	 * @param columnNo 列番号を設定します.
 	 * @param start 開始条件を設定します.
 	 * @param end 終了条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 * @return RimResultSearch 検索結果が返却されます.
 	 */
-	public RimResultSearch<Integer> between(
+	public RimResult between(
 		boolean ascFlag, boolean notEq, int columnNo, Object start, Object end) {
 		checkFix();
 		return new ResultSearchBody(new NormalSearchBetween(
@@ -463,9 +463,9 @@ public class RimBody {
 	 * @param notEq Not条件で検索する場合は true.
 	 * @param columnName 列名を設定します.
 	 * @param values 一致条件を複数設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 * @return RimResultSearch 検索結果が返却されます.
 	 */
-	public RimResultSearch<Integer> in(
+	public RimResult in(
 		boolean ascFlag, boolean notEq, String columnName, Object... values) {
 		return in(ascFlag, notEq, getColumnNameByNo(columnName), values);
 	}
@@ -476,9 +476,9 @@ public class RimBody {
 	 * @param notEq Not条件で検索する場合は true.
 	 * @param columnNo 列番号を設定します.
 	 * @param values 一致条件を複数設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 * @return RimResultSearch 検索結果が返却されます.
 	 */
-	public RimResultSearch<Integer> in(
+	public RimResult in(
 		boolean ascFlag, boolean notEq, int columnNo, Object... values) {
 		checkFix();
 		return new ResultSearchBody(new NormalSearchIn(
@@ -491,9 +491,9 @@ public class RimBody {
 	 * @param notEq Not条件で検索する場合は true.
 	 * @param columnName 列名を設定します.
 	 * @param value 条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 * @return RimResultSearch 検索結果が返却されます.
 	 */
-	public RimResultSearch<Integer> like(boolean ascFlag, boolean notEq,
+	public RimResult like(boolean ascFlag, boolean notEq,
 		String columnName, String value) {
 		return like(ascFlag, notEq, getColumnNameByNo(columnName), value);
 	}
@@ -504,9 +504,9 @@ public class RimBody {
 	 * @param notEq Not条件で検索する場合は true.
 	 * @param columnNo 列番号を設定します.
 	 * @param value 条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 * @return RimResultSearch 検索結果が返却されます.
 	 */
-	public RimResultSearch<Integer> like(boolean ascFlag, boolean notEq,
+	public RimResult like(boolean ascFlag, boolean notEq,
 		int columnNo, String value) {
 		checkFix();
 		return new ResultSearchBody(new NormalSearchLike(
@@ -515,7 +515,7 @@ public class RimBody {
 	
 	// 指定列のBody検索結果を格納するオブジェクト.
 	private static final class ResultSearchBody
-		implements RimResultSearch<Integer> {
+		implements RimResult {
 		// 各検索条件の検索管理オブジェクト.
 		private NormalSearch normalSearch;
 		// hasNext()呼び出しでの検索位置情報.

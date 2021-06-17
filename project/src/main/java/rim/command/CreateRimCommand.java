@@ -73,6 +73,13 @@ public class CreateRimCommand {
 		System.out.println("     この内容は以下のように複数指定可能です.");
 		System.out.println("      > -i id -i name -i age");
 		System.out.println("     この場合 id と name と age がインデックスになります.");
+		
+		System.out.println("  -g [--geo] {緯度列名,経度列名} ....");
+		System.out.println("     緯度列名と経度列名を設定して、Geoインデックス対象を設定します.");
+		System.out.println("     この内容は以下のように複数指定可能です.");
+		System.out.println("      > -g lat,lon -g abc,def");
+		System.out.println("     この場合 lat,lon と abc,def がGeoインデックスになります.");
+		System.out.println("     緯度列名と経度列名の区切り文字は[,]で区切ります.");
 
 		System.out.println("  -c [--charset] {文字コード}");
 		System.out.println("     CSVファイルの文字コードを設定します");
@@ -101,9 +108,11 @@ public class CreateRimCommand {
 	}
 
 	// 処理結果のレポート表示.
-	private static final void viewReport(long time, int rowAll, String csvFile,
-		String outFileName, ObjectList<String> indexList, CompressType compressType,
-		String charset, String separation, int stringHeaderLength, Object option)
+	private static final void viewReport(
+		long time, int rowAll, String csvFile, String outFileName,
+		ObjectList<String> indexList, ObjectList<String[]> geoIndexList,
+		CompressType compressType, String charset, String separation,
+		int stringHeaderLength, Object option)
 		throws Exception {
 		time = System.currentTimeMillis() - time;
 
@@ -129,6 +138,13 @@ public class CreateRimCommand {
 		int len = indexList.size();
 		for(int i = 0; i < len; i ++) {
 			System.out.println("  index(" + (i + 1) + "): " + indexList.get(i));
+		}
+		
+		System.out.println("登録GeoIndex数: " + geoIndexList.size());
+		len = geoIndexList.size();
+		for(int i = 0; i < len; i ++) {
+			System.out.println("  geoIndex(" + (i + 1) + "): " +
+				geoIndexList.get(i)[0] + ", " + geoIndexList.get(i)[1]);
 		}
 
 		System.out.println();
@@ -229,10 +245,6 @@ public class CreateRimCommand {
 			return;
 		}
 
-		// フルパス変換.
-		//csvFile = FileUtil.getFullPath(csvFile);
-		//outFileName = FileUtil.getFullPath(outFileName);
-
 		// CSVファイルが存在しない場合.
 		if(!FileUtil.isFile(csvFile)) {
 			errorOut("指定されたCSVファイルは存在しません: " + csvFile);
@@ -257,6 +269,27 @@ public class CreateRimCommand {
 			}
 			indexList.add(index);
 		}
+		
+		// Geoインデックス情報を取得.
+		ObjectList<String[]> geoIndexList = new ObjectList<String[]>();
+		for(int i = 0;; i ++) {
+			String index = args.next(i, "-g", "--geo");
+			if(index == null) {
+				break;
+			}
+			int p = index.indexOf(",");
+			if(p == -1) {
+				errorOut("指定されたGeoインデックスの列名は "+
+					"\"緯度,経度\" で設定する必要があります: " +
+					index);
+				return;
+			}
+			geoIndexList.add(
+				new String[] {
+					index.substring(0, p),
+					index.substring(p + 1)
+				});
+		}
 
 		// 変換処理.
 		CsvReader csv = null;
@@ -274,6 +307,13 @@ public class CreateRimCommand {
 			for(int i = 0; i < len; i ++) {
 				convRim.addIndex(indexList.get(i));
 			}
+			
+			// geoインデックスの設定.
+			len = geoIndexList.size();
+			for(int i = 0; i < len; i ++) {
+				convRim.addGeoIndex(
+					geoIndexList.get(i)[0], geoIndexList.get(i)[1]);
+			}
 
 			// ファイル出力.
 			int rowAll = convRim.write();
@@ -284,8 +324,8 @@ public class CreateRimCommand {
 
 			// 処理結果のレポートを表示.
 			viewReport(time, rowAll, csvFile, outFileName, indexList,
-				compressType, charset, separation, StringHeaderLength,
-				option);
+				geoIndexList, compressType, charset, separation,
+				StringHeaderLength, option);
 
 			System.exit(0);
 		} finally {

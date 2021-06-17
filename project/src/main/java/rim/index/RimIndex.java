@@ -4,7 +4,7 @@ import java.util.Arrays;
 import java.util.NoSuchElementException;
 
 import rim.RimBody;
-import rim.RimResultSearch;
+import rim.RimResult;
 import rim.RimRow;
 import rim.core.ColumnType;
 import rim.core.RowsFlag;
@@ -169,9 +169,9 @@ public class RimIndex {
 	 * @param ascFlag 昇順で情報取得する場合は true.
 	 * @param notEq Not条件で検索する場合は true.
 	 * @param value 条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 * @return SearchResult 検索結果が返却されます.
 	 */
-	public RimResultSearch<Integer> eq(boolean ascFlag, boolean notEq, Object value) {
+	public RimResult eq(boolean ascFlag, boolean notEq, Object value) {
 		checkNoFixToError();
 		value = columnType.convert(value);
 		final int pos = SearchUtil.indexEq(fixIndex, (Comparable)value);
@@ -195,9 +195,9 @@ public class RimIndex {
 	 * @param ascFlag 昇順で情報取得する場合は true.
 	 * @param notEq Not条件で検索する場合は true.
 	 * @param value 条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 * @return SearchResult 検索結果が返却されます.
 	 */
-	public RimResultSearch<Integer> gt(boolean ascFlag, boolean notEq, Object value) {
+	public RimResult gt(boolean ascFlag, boolean notEq, Object value) {
 		checkNoFixToError();
 		value = columnType.convert(value);
 		final int pos = SearchUtil.indexGT(fixIndex, (Comparable)value);
@@ -226,9 +226,9 @@ public class RimIndex {
 	 * @param ascFlag 昇順で情報取得する場合は true.
 	 * @param notEq Not条件で検索する場合は true.
 	 * @param value 条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 * @return SearchResult 検索結果が返却されます.
 	 */
-	public RimResultSearch<Integer> ge(boolean ascFlag, boolean notEq, Object value) {
+	public RimResult ge(boolean ascFlag, boolean notEq, Object value) {
 		checkNoFixToError();
 		value = columnType.convert(value);
 		final int pos = SearchUtil.indexGE(fixIndex, (Comparable)value);
@@ -257,9 +257,9 @@ public class RimIndex {
 	 * @param ascFlag 昇順で情報取得する場合は true.
 	 * @param notEq Not条件で検索する場合は true.
 	 * @param value 条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 * @return SearchResult 検索結果が返却されます.
 	 */
-	public RimResultSearch<Integer> lt(boolean ascFlag, boolean notEq, Object value) {
+	public RimResult lt(boolean ascFlag, boolean notEq, Object value) {
 		checkNoFixToError();
 		value = columnType.convert(value);
 		final int pos = SearchUtil.indexLT(fixIndex, (Comparable)value);
@@ -287,9 +287,9 @@ public class RimIndex {
 	 * @param ascFlag 昇順で情報取得する場合は true.
 	 * @param notEq Not条件で検索する場合は true.
 	 * @param value 条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 * @return SearchResult 検索結果が返却されます.
 	 */
-	public RimResultSearch<Integer> le(boolean ascFlag, boolean notEq, Object value) {
+	public RimResult le(boolean ascFlag, boolean notEq, Object value) {
 		checkNoFixToError();
 		value = columnType.convert(value);
 		final int pos = SearchUtil.indexLE(fixIndex, (Comparable)value);
@@ -318,9 +318,9 @@ public class RimIndex {
 	 * @param notEq Not条件で検索する場合は true.
 	 * @param startObj 開始条件を設定します.
 	 * @param endObj 終了条件を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 * @return SearchResult 検索結果が返却されます.
 	 */
-	public RimResultSearch<Integer> between(
+	public RimResult between(
 		boolean ascFlag, boolean notEq, Object startObj, Object endObj) {
 		checkNoFixToError();
 		Comparable start = (Comparable)columnType.convert(startObj);
@@ -379,9 +379,9 @@ public class RimIndex {
 	 * @param ascFlag 昇順で情報取得する場合は true.
 	 * @param notEq Not条件で検索する場合は true.
 	 * @param values In条件群を設定します.
-	 * @return SearchResult<Integer> 検索結果が返却されます.
+	 * @return SearchResult 検索結果が返却されます.
 	 */
-	public RimResultSearch<Integer> in(boolean ascFlag, boolean notEq, Object... values) {
+	public RimResult in(boolean ascFlag, boolean notEq, Object... values) {
 		checkNoFixToError();
 		return new ResultSearchIndexIn(ascFlag, notEq, this, values);
 	}
@@ -439,7 +439,7 @@ public class RimIndex {
 	
 	// 標準インデックス検索結果情報.
 	private static final class ResultSearchIndex
-		implements RimResultSearch<Integer> {
+		implements RimResult {
 		
 		// 次の情報が取得可能な場合 true.
 		private boolean nextFlag;
@@ -599,7 +599,7 @@ public class RimIndex {
 	
 	// [NOT]インデックス検索結果.
 	private static final class ResultSearchIndexNot
-		implements RimResultSearch<Integer> {
+		implements RimResult {
 		
 		// このインデックス管理情報.
 		private RimIndex rimIndex;
@@ -764,9 +764,9 @@ public class RimIndex {
 	
 	// [IN]インデックス検索結果情報.
 	private static final class ResultSearchIndexIn
-		implements RimResultSearch<Integer> {
+		implements RimResult {
 		// in 条件.
-		private RimResultSearch<Integer>[] inList;
+		private RimResult[] inList;
 		// 現在のIn条件取得項番.
 		private int targetIn;
 		
@@ -841,7 +841,7 @@ public class RimIndex {
 			// 通常検索.
 			} else {
 				// 通常の場合はin条件はResultSearchで処理する.
-				RimResultSearch<Integer>[] inList = new RimResultSearch[len];
+				RimResult[] inList = new RimResult[len];
 				
 				// valueを列型変換してソート処理.
 				for(i = 0; i < len; i ++) {
