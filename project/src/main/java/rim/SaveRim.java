@@ -1,7 +1,5 @@
 package rim;
 
-import java.io.BufferedOutputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.Date;
@@ -12,16 +10,15 @@ import rim.compress.CompressBuffer;
 import rim.compress.CompressType;
 import rim.compress.Lz4Compress;
 import rim.compress.ZstdCompress;
+import rim.core.BinaryIO;
 import rim.core.ColumnType;
 import rim.core.RbbOutputStream;
-import rim.core.RimUtil;
+import rim.core.SearchUtil;
 import rim.exception.RimException;
 import rim.geo.GeoQuad;
 import rim.util.CsvReader;
 import rim.util.CsvRow;
 import rim.util.ObjectList;
-import rim.util.TypesUtil;
-import rim.util.UTF8IO;
 import rim.util.seabass.SeabassCompress;
 import rim.util.seabass.SeabassCompressBuffer;
 
@@ -36,11 +33,9 @@ public class SaveRim {
 	// 読み込み対象のCSVデーター.
 	private CsvReader csv;
 	// 出力先のファイル名.
-	private String outFileName;
+	private OutputStream rimOut;
 	// 圧縮タイプ.
 	private CompressType compressType;
-	// 文字の型に対する長さを出力するバイナリ長(1byteから4byte).
-	private int stringHeaderLength;
 	// オプション情報.
 	private Object option;
 	
@@ -53,50 +48,46 @@ public class SaveRim {
 	// Geoインデックス列情報群.
 	private ObjectList<GeoIndexColumn> geoIndexColumns =
 		new ObjectList<GeoIndexColumn>();
-
+	// Ngramインデックス列情報群.
+	private ObjectList<NgramIndexColumn> ngramIndexColumns =
+		new ObjectList<NgramIndexColumn>();
+	
 	/**
 	 * コンストラクタ.
 	 * @param csv 読み込み対象のCSVを設定します.
-	 * @param outFileName 出力先ファイル名を設定します.
+	 * @param OutputStream 出力先OutputStreamを設定します.
 	 */
-	public SaveRim(CsvReader csv, String outFileName) {
-		this(csv, outFileName, CompressType.None,
-			RimConstants.DEFAULT_STRING_HEADER_LENGTH, null);
+	public SaveRim(CsvReader csv, OutputStream rimOut) {
+		this(csv, rimOut, CompressType.None, null);
 	}
 	
 	/**
 	 * コンストラクタ.
 	 * @param csv 読み込み対象のCSVを設定します.
-	 * @param outFileName 出力先ファイル名を設定します.
+	 * @param OutputStream 出力先OutputStreamを設定します.
 	 * @param compressType 圧縮タイプを設定します.
 	 */
-	public SaveRim(CsvReader csv, String outFileName, CompressType compressType) {
-		this(csv, outFileName, compressType,
-			RimConstants.DEFAULT_STRING_HEADER_LENGTH, null);
+	public SaveRim(CsvReader csv, OutputStream rimOut,
+		CompressType compressType) {
+		this(csv, rimOut, compressType, null);
 	}
-
+	
 	/**
 	 * コンストラクタ.
 	 * @param csv 読み込み対象のCSVを設定します.
-	 * @param outFileName 出力先ファイル名を設定します.
+	 * @param OutputStream 出力先OutputStreamを設定します.
 	 * @param compressType 圧縮タイプを設定します.
-	 * @param stringHeaderLength 文字列の長さを管理するバイト数を設定します.
+	 * @param ngramLength パースするNgram長を設定します.
 	 * @param option オプション情報を設定します.
 	 */
-	public SaveRim(CsvReader csv, String outFileName, CompressType compressType,
-		int stringHeaderLength, Object option) {
+	public SaveRim(CsvReader csv, OutputStream rimOut,
+		CompressType compressType, Object option) {
 		if(compressType == null) {
 			compressType = CompressType.None;
 		}
-		if(stringHeaderLength <= 0) {
-			stringHeaderLength = 1;
-		} else if(stringHeaderLength > 4) {
-			stringHeaderLength = 4;
-		}
 		this.csv = csv;
-		this.outFileName = outFileName;
+		this.rimOut = rimOut;
 		this.compressType = compressType;
-		this.stringHeaderLength = stringHeaderLength;
 		this.option = option;
 	}
 
@@ -109,8 +100,18 @@ public class SaveRim {
 			csv.close();
 			csv = null;
 		}
-		outFileName = null;
+		if(rimOut != null) {
+			try {
+				rimOut.close();
+			} catch(Exception e) {}
+			rimOut = null;
+		}
+		columnTypes = null;
+		compressType = null;
+		option = null;
 		indexColumns = null;
+		geoIndexColumns = null;
+		ngramIndexColumns = null;
 	}
 
 	// クローズチェック.
@@ -195,7 +196,43 @@ public class SaveRim {
 		geoIndexColumns.add(new GeoIndexColumn(latColumnNo, lonColumnNo));
 		return this;
 	}
-
+	
+	/**
+	 * Ngramインデックス列追加.
+	 * @param column 列名を設定します.
+	 * @return SaveRim このオブジェクトが返却されます.
+	 */
+	public SaveRim addNgramIndex(String column) {
+		return addNgramIndex(column, RimConstants.DEFAULT_NGRAM_LENGTH);
+	}
+	
+	/**
+	 * Ngramインデックス列追加.
+	 * @param column 列名を設定します.
+	 * @param ngramLength パースするNgram長を設定します.
+	 * @return SaveRim このオブジェクトが返却されます.
+	 */
+	public SaveRim addNgramIndex(String column, int ngramLength) {
+		checkClose();
+		int columnNo;
+		// 指定されたインデックスの列名位置を取得.
+		if((columnNo = csv.getHeader().search(column)) == -1) {
+			throw new RimException("Specified column name does not exist: " + column);
+		}
+		// CSV定義の列型群を生成.
+		createColumnTypes();
+		
+		// 緯度・経度の型チェック.
+		ColumnType ngramType = columnTypes[columnNo];
+		if(ColumnType.String != ngramType) {
+			throw new RimException(
+				"The type of the specified ngram column is not string.");
+		}
+		// 列名位置のNgramインデックス情報を作成.
+		ngramIndexColumns.add(new NgramIndexColumn(columnNo, ngramLength));
+		return this;
+	}
+	
 	/**
 	 * インデックスを作成.
 	 * @return int 読み込まれたCSVの行数が返却されます.
@@ -203,14 +240,11 @@ public class SaveRim {
 	 */
 	public int write() throws IOException {
 		checkClose();
-		OutputStream out = null;
 		try {
 			// インデックスが１つも設定されていない場合.
 			if(columnTypes == null) {
 				createColumnTypes();
 			}
-			// インデックスリストを作成.
-			final IndexColumn[] indexList = createIndexList(csv, indexColumns);
 			
 			// よく使うパラメータをまとめたオブジェクトを作成.
 			final RimParams params = new RimParams();
@@ -218,81 +252,72 @@ public class SaveRim {
 			// オプションを設定.
 			params.option = this.option;
 			
-			// stringHeaderLengthをRimParamsにセット.
-			params.stringHeaderLength = stringHeaderLength;
-
 			// テンポラリ情報.
-			params.tmp = new byte[8];
-			params.strBuf = new Object[] {
-				new byte[64]
-			};
+			params.tmp = BinaryIO.createTmp();
+			params.strBuf = BinaryIO.createStringBuffer(false);
 			params.rbb = new RbbOutputStream();
 			
 			// CSVデーターの読み込み.
-			ObjectList[] body = readCsv(csv, columnTypes, indexList, geoIndexColumns);
+			ObjectList[] body = readCsv(csv, columnTypes, indexColumns,
+				geoIndexColumns, ngramIndexColumns);
 			final int rowAll = body[0].size();
 
 			// 全行数に対する長さ管理をするバイト数を取得.
-			params.byte1_4Len = RimUtil.intLengthByByte1_4Length(rowAll);
-
-			// 保存先情報を生成.
-			out = new BufferedOutputStream(
-				new FileOutputStream(outFileName)
-			);
+			params.byte1_4Len = BinaryIO.byte1_4Length(rowAll);
 			
 			// 指定圧縮条件の初期化処理.
 			initCompress(params, compressType);
 
 			// シンボルを出力.
-			out.write(RimConstants.SIMBOL_BINARY);
+			rimOut.write(RimConstants.SIMBOL_BINARY);
 			
 			// 圧縮タイプを出力(1byte).
-			out.write(len1Binary(params.tmp, compressType.getId()), 0, 1);
+			BinaryIO.writeInt1(rimOut, params.tmp, compressType.getId());
 
 			// ヘッダ情報を出力.
-			writeHeader(out, params, csv, columnTypes);
-
-			// それぞれの文字列を表現する長さを管理するヘッダバイト数を出力
-			// (1byte).
-			out.write(len1Binary(params.tmp, params.stringHeaderLength), 0, 1);
-
-			// 全行数を書き込む(4byte).
-			out.write(len4Binary(params.tmp, rowAll), 0, 4);
+			writeHeader(rimOut, params, csv, columnTypes);
 			
-			// 登録されてるインデックス数を書き込む(2byte).
-			out.write(len2Binary(params.tmp, indexColumns.size()), 0, 2);
+			// 全行数を書き込む(Saving).
+			BinaryIO.writeSavingBinary(rimOut, params.tmp, rowAll);
 			
-			// 登録されてるGeoインデックス数を書き込む(2byte).
-			out.write(len2Binary(params.tmp, geoIndexColumns.size()), 0, 2);
-
+			// 登録されてるインデックス数を書き込む(Saving).
+			BinaryIO.writeSavingBinary(rimOut, params.tmp, indexColumns.size());
+			
+			// 登録されてるGeoインデックス数を書き込む(Saving).
+			BinaryIO.writeSavingBinary(rimOut, params.tmp, geoIndexColumns.size());
+			
+			// 登録されてるNgramインデックス数を書き込む(Saving).
+			BinaryIO.writeSavingBinary(rimOut, params.tmp, ngramIndexColumns.size());
+			
 			// bodyデータを出力.
-			writeBody(out, params, body, columnTypes, compressType);
-			body = null;
+			writeBody(rimOut, params, body, columnTypes, compressType);
 
 			// インデックス情報を出力.
-			writeIndex(out, params, columnTypes, compressType, indexColumns);
+			writeIndex(rimOut, params, columnTypes, compressType, body, indexColumns);
 			
 			// Geoインデックス情報を出力.
-			writeGeoIndex(out, params, compressType, geoIndexColumns);
+			writeGeoIndex(rimOut, params, compressType, body, geoIndexColumns);
+			
+			// Ngramインデックス情報を出力.
+			writeNgramIndex(rimOut, params, compressType, body, ngramIndexColumns);
+			body = null;
 
 			// 後処理.
-			out.close();
-			out = null;
-			close();
-
+			rimOut.close();
+			rimOut = null;
 			return rowAll;
 		} finally {
-			if(out != null) {
+			if(rimOut != null) {
 				try {
-					out.close();
+					rimOut.close();
 				} catch(Exception e) {}
+				rimOut = null;
 			}
 			if(csv != null) {
 				try {
 					csv.close();
 				} catch(Exception e) {}
 				csv = null;
-				close();
 			}
 		}
 	}
@@ -332,28 +357,15 @@ public class SaveRim {
 			params.attribute = new CompressBuffer();
 		}
 	}
-
-	// 列位置に対するインデックス管理情報を生成.
-	private static final IndexColumn[] createIndexList(
-		CsvReader csv, ObjectList<IndexColumn> list) {
-		IndexColumn c;
-		final IndexColumn[] ret = new IndexColumn[csv.getHeaderSize()];
-		final int len = list.size();
-		for(int i = 0; i < len; i ++) {
-			c = list.get(i);
-			ret[c.getColumnNo()] = c;
-		}
-		return ret;
-	}
 	
 	// CSV内容を読み込んで列群とインデックス群を取得.
 	// Body情報は列毎に行情報を管理する.
 	private static final ObjectList[] readCsv(CsvReader csv, ColumnType[] typeList,
-		IndexColumn[] indexList, ObjectList<GeoIndexColumn> geoIndexColumns) throws IOException {
-		int i, j;
-		Object o;
+		ObjectList<IndexColumn> indexColumns, ObjectList<GeoIndexColumn> geoIndexColumns,
+		ObjectList<NgramIndexColumn> ngramIndexColumns)
+		throws IOException {
+		int i;
 		List<String> row;
-		int rowId = 0;
 		// 列数を取得.
 		final int columnLength = csv.getHeaderSize();
 		// 列単位行群のBody情報を生成.
@@ -369,67 +381,106 @@ public class SaveRim {
 			for(i = 0; i < columnLength; i ++) {
 				// 対象列の行情報にCSV列情報の行データを追加.
 				columns[i].add(
-					o = typeList[i].convert(row.get(i)));
-				// 対象項目をIndex化する場合.
-				// 変換できないものとnullはIndex対象にしない.
-				if(indexList[i] != null && o != null) {
-					// indexに生成した行情報を追加.
-					indexList[i].rows.add(
-						new IndexRow(rowId, (Comparable)o));
-				}
-				o = null;
-			}
-			rowId ++;
-		}
-		
-		// インデックス情報のソート処理.
-		for(i = 0; i < columnLength; i ++) {
-			if(indexList[i] != null) {
-				indexList[i].rows.smart();
-				indexList[i].rows.sort();
+					typeList[i].convert(row.get(i)));
 			}
 		}
-		
-		// 列情報のスマート化.
-		for(i = 0; i < columnLength; i ++) {
-			columns[i].smart();
-		}
-		
-		// GeoIndexが存在する場合.
-		if(geoIndexColumns.size() > 0) {
-			int rowsLength = rowId;
-			ObjectList rows, rowsLat, rowsLon;
-			Object lat, lon;
-			GeoIndexColumn gio;
-			// 登録されているGeoIndexを作成.
-			final int geoIndexLength = geoIndexColumns.size();
-			for(i = 0; i < geoIndexLength; i ++) {
-				// １つのGeoIndex情報を取得.
-				gio = geoIndexColumns.get(i);
-				rows = gio.rows;
-				// Bodyから緯度、経度の列群を取得.
-				rowsLat = columns[gio.getLatColumnNo()];
-				rowsLon = columns[gio.getLonColumnNo()];
-				for(j = 0; j < rowsLength; j ++) {
-					// 緯度、経度情報を取得してDouble変換.
-					lat = TypesUtil.getDouble(rowsLat.get(j));
-					lon = TypesUtil.getDouble(rowsLon.get(j));
-					// 緯度・経度情報が存在する場合.
-					if(lat != null && lon != null) {
-						// インデックス追加.
-						rows.add(new IndexRow(j, GeoQuad.create(
-							(Double)lat, (Double)lon)));
-					}
-				}
-				// ソート処理.
-				if(rows.size() > 0) {
-					rows.smart();
-					rows.sort();
-				}
-			}
-		}
-		
 		return columns;
+	}
+	
+	// 指定したindexを読み込む.
+	private static final ObjectList<IndexRow> readIndex(
+		ObjectList[] columns, IndexColumn index) {
+		int i;
+		Object value;
+		// インデックス行情報管理情報を取得.
+		final ObjectList rows = columns[index.getColumnNo()];
+		// 総行数を取得.
+		final int rowLength = rows.size();
+		final ObjectList<IndexRow> ret =
+			new ObjectList<IndexRow>(rowLength);
+		for(i = 0; i < rowLength; i ++) {
+			// 列情報が存在する場合.
+			if((value = rows.get(i)) != null) {
+				// インデックス追加.
+				ret.add(new IndexGeneralRow(
+					(Comparable)value, i));
+			}
+		}
+		// ソート処理.
+		if(ret.size() > 0) {
+			ret.smart();
+			ret.sort();
+		}
+		return ret;
+	}
+	
+	// 指定したgeoIndexを読み込む.
+	private static final ObjectList<IndexRow> readGeoIndex(
+		ObjectList[] columns, GeoIndexColumn geo) {
+		int i;
+		Object lat, lon;
+		// Bodyから緯度、経度の列群を取得.
+		final ObjectList rowsLat = columns[geo.getLatColumnNo()];
+		final ObjectList rowsLon = columns[geo.getLonColumnNo()];
+		// 総行数を取得.
+		final int rowLength = rowsLat.size();
+		final ObjectList<IndexRow> ret =
+			new ObjectList<IndexRow>(rowLength);
+		for(i = 0; i < rowLength; i ++) {
+			// 緯度、経度情報を取得してDouble変換.
+			lat = rowsLat.get(i);
+			lon = rowsLon.get(i);
+			// 緯度・経度情報が存在する場合.
+			if(lat != null && lon != null) {
+				// インデックス追加.
+				ret.add(new IndexGeneralRow(GeoQuad.create(
+					(Double)lat, (Double)lon), i));
+			}
+		}
+		// ソート処理.
+		if(ret.size() > 0) {
+			ret.smart();
+			ret.sort();
+		}
+		return ret;
+	}
+	
+	// 指定したngramIndexを読み込む.
+	private static final ObjectList<IndexRow> readNgramIndex(
+		ObjectList[] columns, NgramIndexColumn ngram) {
+		int i, j;
+		int valueLen;
+		String value;
+		// パースするNgram長を取得.
+		final int ngramLength = ngram.getNgramLength();
+		// BodyからNgram列群を取得.
+		final ObjectList rowsNgram = columns[ngram.getColumnNo()];
+		// 総行数を取得.
+		final int rowLength = rowsNgram.size();
+		final ObjectList<IndexRow> ret =
+			new ObjectList<IndexRow>(rowLength);
+		for(i = 0; i < rowLength; i ++) {
+			// 情報を取得してString取得.
+			value = (String)rowsNgram.get(i);
+			// 文字列が存在する場合.
+			if(value != null) {
+				// インデックス追加.
+				valueLen = value.length() - (ngramLength - 1);
+				// 文字をNgramでパースしてインデックス化.
+				for(j = 0; j < valueLen; j ++) {
+					// １つのNgram条件を追加.
+					ret.add(new IndexNgramRow(
+						SearchUtil.getNgramString(value, j, ngramLength),
+						i, j, ngramLength));
+				}
+			}
+		}
+		// ソート処理.
+		if(ret.size() > 0) {
+			ret.smart();
+			ret.sort();
+		}
+		return ret;
 	}
 
 	// ヘッダ情報を出力.
@@ -437,22 +488,20 @@ public class SaveRim {
 		CsvReader csv, ColumnType[] types)
 		throws IOException {
 		final byte[] tmp = params.tmp;
+		final Object[] strBuf = params.strBuf;
 		
-		// 列数を設定(2byte).
+		// 列数を設定(Saving).
 		int len = csv.getHeaderSize();
-		out.write(len2Binary(tmp, len), 0, 2);
+		BinaryIO.writeSavingBinary(out, tmp, len);
 
-		// 列名を設定(len:1byte, utf8).
-		String name;
+		// 列名を設定(utf8).
 		for(int i = 0; i < len; i ++) {
-			name = csv.getHeader(i);
-			out.write(len1Binary(tmp, name.length()), 0, 1);
-			out.write(name.getBytes("UTF8"));
+			BinaryIO.writeString(out, tmp, strBuf, csv.getHeader(i));
 		}
 		
 		// 列型を設定(1byte).
 		for(int i = 0; i < len; i ++) {
-			out.write(len1Binary(tmp, types[i].getNo()), 0, 1);
+			BinaryIO.writeInt1(out, tmp, types[i].getNo());
 		}
 	}
 	
@@ -465,7 +514,7 @@ public class SaveRim {
 		final int columnLen = types.length;
 		final RbbOutputStream rbb = params.rbb;
 		for(int i = 0; i < columnLen; i ++) {
-			o = body[i]; body[i] = null;
+			o = body[i];
 			rbb.reset();
 			switch(types[i]) {
 			case Boolean:
@@ -490,8 +539,7 @@ public class SaveRim {
 				writeDoubleColumns(rbb, tmp, o);
 				break;
 			case String:
-				writeStringColumns(rbb, tmp, params.strBuf,
-					params.stringHeaderLength, o);
+				writeStringColumns(rbb, tmp, params.strBuf, o);
 				break;
 			case Date:
 				writeDateColumns(rbb, tmp, o);
@@ -505,7 +553,8 @@ public class SaveRim {
 	// Index群を出力.
 	private static final void writeIndex(OutputStream out,
 		RimParams params, ColumnType[] types, CompressType compressType,
-		ObjectList<IndexColumn> indexColumns) throws IOException {
+		ObjectList[] body, ObjectList<IndexColumn> indexColumns)
+		throws IOException {
 		
 		ColumnType type;
 		IndexColumn index;
@@ -519,49 +568,85 @@ public class SaveRim {
 		for(int i = 0; i < len; i ++) {
 			index = indexColumns.get(i);
 			type = types[index.getColumnNo()];
-			list = index.getRows();
 			
-			// このIndexを示す列番号を出力(2byte).
-			out.write(len2Binary(tmp, index.getColumnNo()), 0, 2);
+			// インデックス情報を読み込む.
+			list = readIndex(body, index);
 			
-			// このIndexの総行数を出力.
-			out.write(
-				len1_4Binary(tmp, byte1_4Len, list.size()), 0, byte1_4Len);
+			// このIndexを示す列番号を出力(Saving).
+			BinaryIO.writeSavingBinary(out, tmp, index.getColumnNo());
+			
+			// このIndexの総行数を出力(1~4byte).
+			BinaryIO.write1_4Binary(out, tmp, byte1_4Len, list.size());
 			
 			// indexの行群を出力.
 			writeIndexRows(out, params, type, compressType, list);
+			list = null;
 		}
 	}
 	
 	// GeoIndex群を出力.
 	private static final void writeGeoIndex(OutputStream out, RimParams params,
-		CompressType compressType, ObjectList<GeoIndexColumn> geoIndexColumns)
+		CompressType compressType, ObjectList[] body, ObjectList<GeoIndexColumn> geoIndexColumns)
 		throws IOException {
 		
 		GeoIndexColumn index;
 		ObjectList<IndexRow> list;
 		
 		final byte[] tmp = params.tmp;
-		final int byte1_4Len = params.byte1_4Len;
 		final int len = geoIndexColumns.size();
 		
 		// インデックス毎に出力.
 		for(int i = 0; i < len; i ++) {
 			index = geoIndexColumns.get(i);
-			list = index.getRows();
 			
-			// 元の緯度情報を示す列番号を出力(2byte).
-			out.write(len2Binary(tmp, index.getLatColumnNo()), 0, 2);
+			// インデックス情報を読み込む.
+			list = readGeoIndex(body, index);
 			
-			// 元の経度情報を示す列番号を出力(2byte).
-			out.write(len2Binary(tmp, index.getLonColumnNo()), 0, 2);
+			// 元の緯度情報を示す列番号を出力(Saving).
+			BinaryIO.writeSavingBinary(out, tmp, index.getLatColumnNo());
 			
-			// このIndexの総行数を出力.
-			out.write(len1_4Binary(
-				tmp, byte1_4Len, list.size()), 0, byte1_4Len);
+			// 元の経度情報を示す列番号を出力(Saving).
+			BinaryIO.writeSavingBinary(out, tmp, index.getLonColumnNo());
+			
+			// このIndexの総行数を出力(1~4byte).
+			BinaryIO.write1_4Binary(out, tmp, params.byte1_4Len, list.size());
 			
 			// indexの行群を出力.
 			writeIndexRows(out, params, ColumnType.Long, compressType, list);
+			list = null;
+		}
+	}
+	
+	// NgramIndex群を出力.
+	private static final void writeNgramIndex(OutputStream out, RimParams params,
+		CompressType compressType, ObjectList[] body, ObjectList<NgramIndexColumn> ngramIndexColumns)
+		throws IOException {
+		
+		NgramIndexColumn index;
+		ObjectList<IndexRow> list;
+		
+		final byte[] tmp = params.tmp;
+		final int len = ngramIndexColumns.size();
+		
+		// インデックス毎に出力.
+		for(int i = 0; i < len; i ++) {
+			index = ngramIndexColumns.get(i);
+			
+			// インデックス情報を読み込む.
+			list = readNgramIndex(body, index);
+			
+			// 列番号を出力(Saving).
+			BinaryIO.writeSavingBinary(out, tmp, index.getColumnNo());
+			
+			// パースするNgram長を出力(byte).
+			BinaryIO.writeInt1(out, tmp, index.getNgramLength());
+			
+			// このIndexの総行数を出力(1~4byte).
+			BinaryIO.write1_4Binary(out, tmp, params.byte1_4Len, list.size());
+			
+			// indexの行群を出力.
+			writeIndexRows(out, params, ColumnType.Long, compressType, list);
+			list = null;
 		}
 	}
 	
@@ -624,201 +709,20 @@ public class SaveRim {
 		int start, int end)
 		throws IOException {
 
-		final byte[] tmp = params.tmp;
-		final Object[] strBuf = params.strBuf;
-		final int stringHeaderLength = params.stringHeaderLength;
-		final int byte1_4Len = params.byte1_4Len;
-		
 		// value情報を出力.
-		convertValue(rbb, tmp, strBuf, stringHeaderLength, type,
-			list.get(start).getValue());
+		list.get(start).writeByValue(rbb, params, type);
 
-		// 連続する行数を出力.
-		rbb.write(len1_4Binary(tmp, byte1_4Len, end - start), 0, byte1_4Len);
+		// 連続する行数を出力(saving).
+		BinaryIO.writeSavingBinary(rbb, params.tmp, end - start);
 		
 		// 連続する行ID群を出力.
 		int ret = 0;
 		for(int i = start; i < end; i ++) {
-			rbb.write(len1_4Binary(tmp, byte1_4Len, list.get(i).getRowId()),
-				0, byte1_4Len);
+			list.get(i).writeByRowInfo(rbb, params);
 			ret ++;
 		}
 		
 		return ret;
-	}
-	
-	// 1byteのデーターセット.
-	private static final byte[] len1Binary(byte[] tmp, int len) {
-		tmp[0] = (byte)(len & 0x000000ff);
-		return tmp;
-	}
-
-	// 2byteのデーターセット.
-	private static final byte[] len2Binary(byte[] tmp, int len) {
-		tmp[0] = (byte)((len & 0x0000ff00) >> 8);
-		tmp[1] = (byte) (len & 0x000000ff);
-		return tmp;
-	}
-
-	// 3byteのデーターセット.
-	private static final byte[] len3Binary(byte[] tmp, int len) {
-		tmp[0] = (byte)((len & 0x00ff0000) >> 16);
-		tmp[1] = (byte)((len & 0x0000ff00) >> 8);
-		tmp[2] = (byte) (len & 0x000000ff);
-		return tmp;
-	}
-	
-	// 4byteのデーターセット.
-	private static final byte[] len4Binary(byte[] tmp, int len) {
-		tmp[0] = (byte)((len & 0xff000000) >> 24);
-		tmp[1] = (byte)((len & 0x00ff0000) >> 16);
-		tmp[2] = (byte)((len & 0x0000ff00) >> 8);
-		tmp[3] = (byte) (len & 0x000000ff);
-		return tmp;
-	}
-
-	// 8byteのデーターセット.
-	private static final byte[] len8Binary(byte[] tmp, long len) {
-		tmp[0] = (byte)((len & 0xff00000000000000L) >> 56L);
-		tmp[1] = (byte)((len & 0x00ff000000000000L) >> 48L);
-		tmp[2] = (byte)((len & 0x0000ff0000000000L) >> 40L);
-		tmp[3] = (byte)((len & 0x000000ff00000000L) >> 32L);
-		tmp[4] = (byte)((len & 0x00000000ff000000L) >> 24L);
-		tmp[5] = (byte)((len & 0x0000000000ff0000L) >> 16L);
-		tmp[6] = (byte)((len & 0x000000000000ff00L) >> 8L);
-		tmp[7] = (byte) (len & 0x00000000000000ffL);
-		return tmp;
-	}
-
-	// 1byte から 4byte までの条件に対して、データーセット.
-	private static final byte[] len1_4Binary(byte[] tmp, int len1_4, int len) {
-		switch(len1_4) {
-		case 1: return len1Binary(tmp, len);
-		case 2: return len2Binary(tmp, len);
-		case 3: return len3Binary(tmp, len);
-		case 4: return len4Binary(tmp, len);
-		default: return len4Binary(tmp, len);
-		}
-	}
-	
-	// Booleanオブジェクトを書き込む.
-	private static final void writeBoolean(OutputStream out, byte[] tmp, Boolean v)
-		throws IOException {
-		// valueがnullの場合は０(false)を設定.
-		if(v == null) {
-			len1Binary(tmp, 0);
-		} else {
-			len1Binary(tmp, v ? 1 : 0);
-		}
-		out.write(tmp, 0, 1);
-	}
-
-	// Byteオブジェクトを書き込む.
-	private static final void writeByte(OutputStream out, byte[] tmp, Byte v)
-		throws IOException {
-		// valueがnullの場合は０を設定.
-		if(v == null) {
-			len1Binary(tmp, 0);
-		} else {
-			len1Binary(tmp, v);
-		}
-		out.write(tmp, 0, 1);
-	}
-	
-	// Shortオブジェクトを書き込む.
-	private static final void writeShort(OutputStream out, byte[] tmp, Short v)
-		throws IOException {
-		// valueがnullの場合は０を設定.
-		if(v == null) {
-			len2Binary(tmp, 0);
-		} else {
-			len2Binary(tmp, v);
-		}
-		out.write(tmp, 0, 2);
-	}
-
-	// Integerオブジェクトを書き込む.
-	private static final void writeInteger(OutputStream out, byte[] tmp, Integer v)
-		throws IOException {
-		// valueがnullの場合は０を設定.
-		if(v == null) {
-			len4Binary(tmp, 0);
-		} else {
-			len4Binary(tmp, v);
-		}
-		out.write(tmp, 0, 4);
-	}
-	
-	// Longオブジェクトを書き込む.
-	private static final void writeLong(OutputStream out, byte[] tmp, Long v)
-		throws IOException {
-		// valueがnullの場合は０を設定.
-		if(v == null) {
-			len8Binary(tmp, 0L);
-		} else {
-			len8Binary(tmp, v);
-		}
-		out.write(tmp, 0, 8);
-	}
-
-	// Floatオブジェクトを書き込む.
-	private static final void writeFloat(OutputStream out, byte[] tmp, Float v)
-		throws IOException {
-		// valueがnullの場合は０を設定.
-		if(v == null) {
-			len4Binary(tmp, Float.floatToIntBits(0f));
-		} else {
-			len4Binary(tmp, Float.floatToIntBits(v));
-		}
-		out.write(tmp, 0, 4);
-	}
-	
-	// Doubleオブジェクトを書き込む.
-	private static final void writeDouble(OutputStream out, byte[] tmp, Double v)
-		throws IOException {
-		// valueがnullの場合は０を設定.
-		if(v == null) {
-			len8Binary(tmp, Double.doubleToLongBits(0d));
-		} else {
-			len8Binary(tmp, Double.doubleToLongBits(v));
-		}
-		out.write(tmp, 0, 8);
-	}
-
-	// Stringオブジェクトを書き込む.
-	private static final void writeString(OutputStream out, byte[] tmp, Object[] strBuf,
-		int stringHeaderLength, String v) throws IOException {
-		// valueがnullの場合は０文字を設定.
-		if(v == null) {
-			len4Binary(tmp, 0);
-			out.write(tmp, 0, stringHeaderLength);
-		} else {
-			// 文字列がnullや空の場合も０文字を設定.
-			if(v.isEmpty()) {
-				len4Binary(tmp, 0);
-				out.write(tmp, 0, stringHeaderLength);
-			} else {
-				byte[] b = RimUtil.getStringByteArray(strBuf, v.length() * 4);
-				int len = UTF8IO.encode(b, v);
-				// 文字列のバイナリ長を設定.
-				out.write(len1_4Binary(tmp, stringHeaderLength, len),
-					0, stringHeaderLength);
-				// 文字列を設定.
-				out.write(b, 0, len);
-			}
-		}
-	}
-	
-	// Dateオブジェクトを書き込む.
-	private static final void writeDate(OutputStream out, byte[] tmp, Date v)
-		throws IOException {
-		// valueがnullの場合は０を設定.
-		if(v == null) {
-			len8Binary(tmp, 0L);
-		} else {
-			len8Binary(tmp, v.getTime());
-		}
-		out.write(tmp, 0, 8);
 	}
 	
 	// 未圧縮の内容を書き込む.
@@ -828,9 +732,9 @@ public class SaveRim {
 		final int rbbLen = rbb.getLength();
 		
 		// 圧縮フラグOFF.
-		writeBoolean(out, params.tmp, false);
+		BinaryIO.writeBoolean(out, params.tmp, false);
 		// データー長を設定.
-		out.write(len4Binary(params.tmp, rbbLen), 0, 4);
+		BinaryIO.writeSavingBinary(out, params.tmp, rbbLen);
 		// データーを設定.
 		out.write(rbb.getRawBuffer(), 0, rbbLen);
 	}
@@ -872,9 +776,9 @@ public class SaveRim {
 			} else {
 				
 				// 圧縮フラグON.
-				writeBoolean(out, params.tmp, true);
+				BinaryIO.writeBoolean(out, params.tmp, true);
 				// データー長を設定.
-				out.write(len4Binary(params.tmp, resLen), 0, 4);
+				BinaryIO.writeSavingBinary(out, params.tmp, resLen);
 				// データーを設定.
 				out.write(buf.getRawBuffer(), 0, resLen);
 			}
@@ -909,9 +813,9 @@ public class SaveRim {
 			} else {
 				
 				// 圧縮フラグON.
-				writeBoolean(out, params.tmp, true);
+				BinaryIO.writeBoolean(out, params.tmp, true);
 				// データー長を設定.
-				out.write(len4Binary(params.tmp, resLen), 0, 4);
+				BinaryIO.writeSavingBinary(out, params.tmp, resLen);
 				// データーを設定.
 				out.write(wrbb.getRawBuffer(), 0, resLen);
 			}
@@ -947,13 +851,13 @@ public class SaveRim {
 			} else {
 				
 				// 圧縮フラグON.
-				writeBoolean(out, params.tmp, true);
+				BinaryIO.writeBoolean(out, params.tmp, true);
 				
 				// 圧縮前の元データ長を保存するバイト数を取得.
 				int headLen = lz4.writeSrcLengthToByteLength(rbb.getLength());
 				
 				// データー長を設定.
-				out.write(len4Binary(params.tmp, resLen + headLen), 0, 4);
+				BinaryIO.writeSavingBinary(out, params.tmp, resLen + headLen);
 				
 				// 元のデータサイズを設定.
 				lz4.writeSrcLength(params.tmp, 0, rbb.getLength());
@@ -991,9 +895,9 @@ public class SaveRim {
 			} else {
 				
 				// 圧縮フラグON.
-				writeBoolean(out, params.tmp, true);
+				BinaryIO.writeBoolean(out, params.tmp, true);
 				// データー長を設定.
-				out.write(len4Binary(params.tmp, oBuf.getLimit()), 0, 4);
+				BinaryIO.writeSavingBinary(out, params.tmp, oBuf.getLimit());
 				// データーを設定.
 				out.write(oBuf.getRawBuffer(), 0, oBuf.getLimit());
 			}
@@ -1008,35 +912,34 @@ public class SaveRim {
 	
 	// 1つのValueを出力.
 	private static final void convertValue(OutputStream out, byte[] tmp, Object[] strBuf,
-		int stringHeaderLength, ColumnType type, Object value) throws IOException {
+		ColumnType type, Object value) throws IOException {
 		switch(type) {
 		case Boolean:
-			writeBoolean(out, tmp, (Boolean)type.convert(value));
+			BinaryIO.writeBoolean(out, tmp, (Boolean)type.convert(value));
 			break;
 		case Byte:
-			writeByte(out, tmp, (Byte)type.convert(value));
+			BinaryIO.writeInt1(out, tmp, (Byte)type.convert(value));
 			break;
 		case Short:
-			writeShort(out, tmp, (Short)type.convert(value));
+			BinaryIO.writeInt2(out, tmp, (Short)type.convert(value));
 			break;
 		case Integer:
-			writeInteger(out, tmp, (Integer)type.convert(value));
+			BinaryIO.writeInt4(out, tmp, (Integer)type.convert(value));
 			break;
 		case Long:
-			writeLong(out, tmp, (Long)type.convert(value));
+			BinaryIO.writeLong(out, tmp, (Long)type.convert(value));
 			break;
 		case Float:
-			writeFloat(out, tmp, (Float)type.convert(value));
+			BinaryIO.writeFloat(out, tmp, (Float)type.convert(value));
 			break;
 		case Double:
-			writeDouble(out, tmp, (Double)type.convert(value));
+			BinaryIO.writeDouble(out, tmp, (Double)type.convert(value));
 			break;
 		case String:
-			writeString(out, tmp, strBuf, stringHeaderLength,
-				(String)type.convert(value));
+			BinaryIO.writeString(out, tmp, strBuf, (String)type.convert(value));
 			break;
 		case Date:
-			writeDate(out, tmp, (Date)type.convert(value));
+			BinaryIO.writeDate(out, tmp, (Date)type.convert(value));
 			break;
 		}
 	}
@@ -1047,7 +950,7 @@ public class SaveRim {
 		final int len = v.size();
 		final Object[] o = v.rawArray();
 		for(int i = 0; i < len; i ++) {
-			writeBoolean(out, tmp, (Boolean)o[i]);
+			BinaryIO.writeBoolean(out, tmp, (Boolean)o[i]);
 		}
 	}
 
@@ -1057,7 +960,7 @@ public class SaveRim {
 		final int len = v.size();
 		final Object[] o = v.rawArray();
 		for(int i = 0; i < len; i ++) {
-			writeByte(out, tmp, (Byte)o[i]);
+			BinaryIO.writeInt1(out, tmp, (Byte)o[i]);
 		}
 	}
 	
@@ -1067,7 +970,7 @@ public class SaveRim {
 		final int len = v.size();
 		final Object[] o = v.rawArray();
 		for(int i = 0; i < len; i ++) {
-			writeShort(out, tmp, (Short)o[i]);
+			BinaryIO.writeInt2(out, tmp, (Short)o[i]);
 		}
 	}
 
@@ -1077,7 +980,7 @@ public class SaveRim {
 		final int len = v.size();
 		final Object[] o = v.rawArray();
 		for(int i = 0; i < len; i ++) {
-			writeInteger(out, tmp, (Integer)o[i]);
+			BinaryIO.writeInt4(out, tmp, (Integer)o[i]);
 		}
 	}
 	
@@ -1087,7 +990,7 @@ public class SaveRim {
 		final int len = v.size();
 		final Object[] o = v.rawArray();
 		for(int i = 0; i < len; i ++) {
-			writeLong(out, tmp, (Long)o[i]);
+			BinaryIO.writeLong(out, tmp, (Long)o[i]);
 		}
 	}
 
@@ -1097,7 +1000,7 @@ public class SaveRim {
 		final int len = v.size();
 		final Object[] o = v.rawArray();
 		for(int i = 0; i < len; i ++) {
-			writeFloat(out, tmp, (Float)o[i]);
+			BinaryIO.writeFloat(out, tmp, (Float)o[i]);
 		}
 	}
 	
@@ -1107,17 +1010,17 @@ public class SaveRim {
 		final int len = v.size();
 		final Object[] o = v.rawArray();
 		for(int i = 0; i < len; i ++) {
-			writeDouble(out, tmp, (Double)o[i]);
+			BinaryIO.writeDouble(out, tmp, (Double)o[i]);
 		}
 	}
 
 	// 列群をStringで書き込む.
-	private static final void writeStringColumns(OutputStream out, byte[] tmp, Object[] strBuf,
-		int stringHeaderLength, ObjectList v) throws IOException {
+	private static final void writeStringColumns(OutputStream out, byte[] tmp,
+		Object[] strBuf, ObjectList v) throws IOException {
 		final int len = v.size();
 		final Object[] o = v.rawArray();
 		for(int i = 0; i < len; i ++) {
-			writeString(out, tmp, strBuf, stringHeaderLength, (String)o[i]);
+			BinaryIO.writeString(out, tmp, strBuf, (String)o[i]);
 		}
 	}
 	
@@ -1127,33 +1030,153 @@ public class SaveRim {
 		final int len = v.size();
 		final Object[] o = v.rawArray();
 		for(int i = 0; i < len; i ++) {
-			writeDate(out, tmp, (Date)o[i]);
+			BinaryIO.writeDate(out, tmp, (Date)o[i]);
 		}
 	}
 	
 	/**
 	 * 1つのIndex行情報.
 	 */
-	private static final class IndexRow implements Comparable<IndexRow> {
-		final int rowId;
+	private static interface IndexRow<T> extends Comparable<T> {
+		/**
+		 * インデックス要素を取得.
+		 * @return インデックス要素が返却されます.
+		 */
+		public Comparable getValue();
+		
+		/**
+		 * Value情報をバイナリ出力.
+		 * @param rbb 出力先の情報を設定します.5
+		 * @param params Rimパラメータを設定します.
+		 * @param type 列型を設定します.
+		 * @exception IOException I/O例外.
+		 */
+		public void writeByValue(RbbOutputStream rbb, RimParams params,
+			ColumnType type) throws IOException;
+		
+		/**
+		 * 行関連の情報をバイナリ出力.
+		 * @param rbb 出力先の情報を設定します.
+		 * @param params Rimパラメータを設定します.
+		 * @exception IOException I/O例外.
+		 */
+		public void writeByRowInfo(RbbOutputStream rbb, RimParams params)
+			throws IOException;
+	}
+	
+	/**
+	 * 1つの基本(Index, GeoIndex)行情報.
+	 */
+	private static final class IndexGeneralRow
+		implements IndexRow<IndexGeneralRow> {
 		final Comparable value;
+		final int rowId;
 
-		public IndexRow(int rowId, Comparable value) {
+		public IndexGeneralRow(Comparable value, int rowId) {
 			this.rowId = rowId;
 			this.value = value;
 		}
 
 		@Override
-		public int compareTo(IndexRow o) {
+		public int compareTo(IndexGeneralRow o) {
 			return value.compareTo(o.value);
 		}
 
-		public int getRowId() {
-			return rowId;
-		}
-
+		@Override
 		public Comparable getValue() {
 			return value;
+		}
+		
+		@Override
+		public void writeByValue(RbbOutputStream rbb, RimParams params,
+			ColumnType type) throws IOException {
+			convertValue(rbb, params.tmp, params.strBuf, type, value);
+		}
+		
+		@Override
+		public void writeByRowInfo(RbbOutputStream rbb, RimParams params)
+			throws IOException {
+			BinaryIO.write1_4Binary(rbb, params.tmp, params.byte1_4Len, rowId);
+		}
+	}
+	
+	/**
+	 * 1つのNgram行情報.
+	 */
+	private static final class IndexNgramRow
+		implements IndexRow<IndexNgramRow> {
+		final long value;
+		final int rowId;
+		final int position;
+		final byte ngramLength;
+		
+		public IndexNgramRow(long value, int rowId, int position, int ngramLength) {
+			this.value = value;
+			this.rowId = rowId;
+			this.position = position & 0x0000ffff;
+			this.ngramLength = (byte)(ngramLength & 0x0000007f);
+		}
+
+		@Override
+		public int compareTo(IndexNgramRow o) {
+			final long n = value - o.value;
+			if(n < 0L) {
+				return -1;
+			} else if(n > 0L) {
+				return 1;
+			}
+			final int r = rowId - o.rowId;
+			if(r != 0) {
+				return r;
+			}
+			final int p = position - o.position;
+			if(p != 0) {
+				return p;
+			}
+			return 0;
+		}
+
+		@Override
+		public Comparable getValue() {
+			return value;
+		}
+		
+		@Override
+		public void writeByValue(RbbOutputStream rbb, RimParams params,
+			ColumnType type) throws IOException {
+			final byte[] tmp = params.tmp;
+			// ngramの条件に従って、ngramLengthの条件で
+			// 出力サイズに従って書き込む.
+			switch(ngramLength) {
+			// unigram.
+			case 1:
+				BinaryIO.writeInt2(rbb, tmp, value);
+				break;
+			// bigram.
+			case 2:
+				BinaryIO.writeInt4(rbb, tmp, value);
+				break;
+			// trigram.
+			case 3:
+				tmp[0] = (byte)((value & 0x0000ff0000000000L) >> 40L);
+				tmp[1] = (byte)((value & 0x000000ff00000000L) >> 32L);
+				tmp[2] = (byte)((value & 0x00000000ff000000L) >> 24L);
+				tmp[3] = (byte)((value & 0x0000000000ff0000L) >> 16L);
+				tmp[4] = (byte)((value & 0x000000000000ff00L) >> 8L);
+				tmp[5] = (byte)( value & 0x00000000000000ffL);
+				rbb.write(tmp, 0, 6);
+				break;
+			}
+		}
+		
+		@Override
+		public void writeByRowInfo(RbbOutputStream rbb, RimParams params)
+			throws IOException {
+			// 行番号を書き込む.
+			BinaryIO.write1_4Binary(rbb, params.tmp, params.byte1_4Len, rowId);
+			
+			// 文字位置情報を書き込む.
+			BinaryIO.writeSavingBinary(rbb, params.tmp, position);
 		}
 	}
 
@@ -1161,8 +1184,7 @@ public class SaveRim {
 	 * 1つのIndex列を示す内容.
 	 */
 	private static final class IndexColumn {
-		final int columnNo;
-		ObjectList<IndexRow> rows;
+		private final int columnNo;
 
 		/**
 		 * コンストラクタ.
@@ -1170,7 +1192,6 @@ public class SaveRim {
 		 */
 		public IndexColumn(int columnNo) {
 			this.columnNo = columnNo;
-			this.rows = new ObjectList<IndexRow>();
 		}
 
 		/**
@@ -1180,23 +1201,14 @@ public class SaveRim {
 		public int getColumnNo() {
 			return columnNo;
 		}
-		
-		/**
-		 * インデックス行群を取得.
-		 * @return 行群が返却されます.
-		 */
-		public ObjectList<IndexRow> getRows() {
-			return rows;
-		}
 	}
 	
 	/**
 	 * １つのGeoIndex列を示す内容.
 	 */
 	private static final class GeoIndexColumn {
-		final int latColumnNo;
-		final int lonColumnNo;
-		ObjectList<IndexRow> rows;
+		private final int latColumnNo;
+		private final int lonColumnNo;
 		
 		/**
 		 * コンストラクタ.
@@ -1206,7 +1218,6 @@ public class SaveRim {
 		public GeoIndexColumn(int latColumnNo, int lonColumnNo) {
 			this.latColumnNo = latColumnNo;
 			this.lonColumnNo = lonColumnNo;
-			this.rows = new ObjectList<IndexRow>();
 		}
 
 		/**
@@ -1224,15 +1235,47 @@ public class SaveRim {
 		public int getLonColumnNo() {
 			return lonColumnNo;
 		}
+	}
+	
+	/**
+	 * 1つのNgramIndex列を示す内容.
+	 */
+	private static final class NgramIndexColumn {
+		private final int columnNo;
+		private final int ngramLength;
 
 		/**
-		 * インデックス行群を取得.
-		 * @return 行群が返却されます.
+		 * コンストラクタ.
+		 * @param columnNo インデックス対象の列番号を設定します.
+		 * @param ngramLength パースするNgram長を設定します.
 		 */
-		public ObjectList<IndexRow> getRows() {
-			return rows;
+		public NgramIndexColumn(int columnNo, int ngramLength) {
+			if(ngramLength < RimConstants.MIN_NGRAM_LENGTH) {
+				ngramLength = RimConstants.MIN_NGRAM_LENGTH;
+			} else if(ngramLength > RimConstants.MAX_NGRAM_LENGTH) {
+				ngramLength = RimConstants.MAX_NGRAM_LENGTH;
+			}
+			this.columnNo = columnNo;
+			this.ngramLength = ngramLength;
+		}
+
+		/**
+		 * インデックス対象の列番号が返却されます.
+		 * @return int 列番号が返却されます.
+		 */
+		public int getColumnNo() {
+			return columnNo;
+		}
+		
+		/**
+		 * パースするNgram長が返却されます.
+		 * @return int パースするNgram長が返却されます.
+		 */
+		public int getNgramLength() {
+			return ngramLength;
 		}
 	}
+
 	
 	// 利用頻度の高いパラメータを１つにまとめた内容.
 	private static final class RimParams {
@@ -1242,14 +1285,11 @@ public class SaveRim {
 		byte[] tmp;
 		// 文字列テンポラリバッファ.
 		Object[] strBuf;
-		// 文字列の長さを保持するバイト値.
-		int stringHeaderLength;
 		// 行数に応じた行情報を保持するバイト値.
 		int byte1_4Len;
-		// オプション情報.
-		Object option;
 		// 再利用可能なBinaryのOutputStream.
 		RbbOutputStream rbb;
-		
+		// オプション情報.
+		Object option;
 	}
 }

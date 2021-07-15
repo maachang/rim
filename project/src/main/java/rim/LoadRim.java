@@ -4,22 +4,21 @@ import java.io.BufferedInputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Date;
 import java.util.zip.GZIPInputStream;
 
 import rim.compress.CompressBuffer;
 import rim.compress.CompressType;
 import rim.compress.Lz4Compress;
 import rim.compress.ZstdCompress;
+import rim.core.BinaryIO;
 import rim.core.ColumnType;
 import rim.core.RbInputStream;
 import rim.core.RbbOutputStream;
-import rim.core.RimUtil;
 import rim.exception.RimException;
-import rim.index.RimGeoIndex;
-import rim.index.RimIndex;
+import rim.index.GeneralIndex;
+import rim.index.GeoIndex;
+import rim.index.NgramIndex;
 import rim.util.FileUtil;
-import rim.util.UTF8IO;
 import rim.util.seabass.SeabassCompress;
 import rim.util.seabass.SeabassCompressBuffer;
 
@@ -30,6 +29,10 @@ public class LoadRim {
 	private LoadRim() {
 	}
 	
+	private static final int GENERAL_INDEX = 0;
+	private static final int GEO_INDEX = 1;
+	private static final int NGRAM_INDEX = 2;
+	
 	// 利用頻度の高いパラメータを１つにまとめた内容.
 	private static final class RimParams {
 		// 属性情報.
@@ -38,8 +41,6 @@ public class LoadRim {
 		byte[] tmp;
 		// 文字列テンポラリバッファ.
 		Object[] strBuf;
-		// 文字列の長さを保持するバイト値.
-		int stringHeaderLength;
 		// 行数に応じた行情報を保持するバイト値.
 		int byte1_4Len;
 		// データ塊を一時受け取るバッファ.
@@ -70,19 +71,16 @@ public class LoadRim {
 			RimParams params = new RimParams();
 			
 			// バッファ関連の情報生成.
-			params.tmp = new byte[8];
-			params.strBuf = new Object[] {
-				new byte[64]
-				,new char[64]
-			};
+			params.tmp = BinaryIO.createTmp();
+			params.strBuf = BinaryIO.createStringBuffer(true);
 			params.chunkedBuffer = new byte[1024];
 			
 			// シンボルのチェック.
 			checkSimbol(in, params.tmp);
 			
 			// 圧縮タイプを取得(1byte).
-			readBinary(params.tmp, in, 1);
-			CompressType compressType = CompressType.get(bin1Int(params.tmp));
+			final CompressType compressType = CompressType.get(
+				BinaryIO.readInt1(in, params.tmp));
 			
 			// 圧縮タイプが「デフォルト圧縮」の場合.
 			if(CompressType.Default == compressType) {
@@ -123,29 +121,25 @@ public class LoadRim {
 			ColumnType[] columnTypes = (ColumnType[])headers[2];
 			headers = null;
 			
-			// それぞれの文字列を表現する長さを管理するヘッダバイト数を取得.
-			// (1byte).
-			readBinary(params.tmp, in, 1);
-			params.stringHeaderLength = bin1Int(params.tmp);
-			
-			// 全行数を読み込む(4byte).
-			readBinary(params.tmp, in, 4);
-			final int rowAll = bin4Int(params.tmp);
+			// 全行数を読み込む(Saving).
+			final int rowAll = BinaryIO.readSavingInt(in, params.tmp);
 			
 			// 全行数に対する長さ管理をするバイト数を取得.
-			params.byte1_4Len = RimUtil.intLengthByByte1_4Length(rowAll);
+			params.byte1_4Len = BinaryIO.byte1_4Length(rowAll);
 			
-			// 登録されているインデックス数を取得.
-			readBinary(params.tmp, in, 2);
-			final int indexLength = bin2Int(params.tmp);
+			// 登録されているインデックス数を取得(Saving).
+			final int indexLength = BinaryIO.readSavingInt(in, params.tmp);
 			
-			// 登録されているGeoインデックス数を取得.
-			readBinary(params.tmp, in, 2);
-			final int geoIndexLength = bin2Int(params.tmp);
+			// 登録されているGeoインデックス数を取得(Saving).
+			final int geoIndexLength = BinaryIO.readSavingInt(in, params.tmp);
+			
+			// 登録されているNgramインデックス数を取得(Saving).
+			final int ngramIndexLength = BinaryIO.readSavingInt(in, params.tmp);
 			
 			// 返却するRimオブジェクトを生成.
 			final RimBody body = new RimBody(columns, columnTypes, rowAll);
-			final Rim ret = new Rim(body, indexLength, geoIndexLength);
+			final Rim ret = new Rim(body, indexLength, geoIndexLength,
+				ngramIndexLength);
 			columns = null;
 			
 			// Body情報を取得.
@@ -158,6 +152,9 @@ public class LoadRim {
 			
 			// 登録Geoインデックスを取得.
 			readGeoIndex(ret, in, params, compressType, geoIndexLength);
+			
+			// 登録Ngramインデックスを取得.
+			readNGramIndex(ret, in, params, compressType, ngramIndexLength);
 			
 			// fix.
 			ret.fix();
@@ -174,6 +171,33 @@ public class LoadRim {
 		}
 	}
 	
+	// ヘッダ情報を取得.
+	private static final Object[] readHeader(InputStream in, RimParams params)
+		throws IOException {
+		
+		int i;
+		
+		// 列数を取得(Saving).
+		final int columnLength = BinaryIO.readSavingInt(in, params.tmp);
+				
+		// 列名を取得(utf8).
+		final String[] columns = new String[columnLength];
+		for(i = 0; i < columnLength; i ++) {
+			// 列名を取得
+			columns[i] = BinaryIO.readString(in, params.tmp, params.strBuf);
+		}
+		
+		// 列型を取得(1byte).
+		final ColumnType[] columnTypes = new ColumnType[columnLength];
+		for(i = 0; i < columnLength; i ++) {
+			// 列型を取得(1byte)
+			columnTypes[i] = ColumnType.get(
+				BinaryIO.readInt1(in, params.tmp));
+		}
+		// [0]: 列数, [1]: 列名, [2]: 列型.
+		return new Object[] {columnLength, columns, columnTypes};
+	}
+	
 	// bodyを取得.
 	private static final void readBody(Rim out, RimBody body, InputStream in,
 		RimParams params, ColumnType[] columnTypes, CompressType compressType,
@@ -186,10 +210,10 @@ public class LoadRim {
 		for(i = 0; i < columnLength; i ++) {
 			
 			// 圧縮フラグを取得.
-			boolean compFlag = readBoolean(in, params.tmp);
+			boolean compFlag = BinaryIO.readBoolean(in, params.tmp);
 			
 			// データ塊長を取得.
-			len = readInteger(in, params.tmp);
+			len = BinaryIO.readSavingInt(in, params.tmp);
 			
 			// 塊受付バッファサイズが小さい場合.
 			if(params.chunkedBuffer.length < len) {
@@ -198,7 +222,7 @@ public class LoadRim {
 			}
 			
 			// 塊データを取得.
-			readBinary(params.chunkedBuffer, in, len);
+			BinaryIO.readBinary(params.chunkedBuffer, in, len);
 			
 			// 圧縮されている場合、塊を解凍して取得.
 			data = readDecompress(dataLen, compressType, params, compFlag, len);
@@ -226,25 +250,24 @@ public class LoadRim {
 		CompressType compressType, int indexLength) throws IOException {
 		int columnNo;
 		int planIndexSize;
-		RimIndex index;
-
+		GeneralIndex index;
 		
 		// 全体のインデックス情報のループ.
 		for(int i = 0; i < indexLength; i ++) {
 			
-			// 対象インデックスの列番号を取得.
-			readBinary(params.tmp, in, 2);
-			columnNo = bin2Int(params.tmp);
+			// 対象インデックスの列番号を取得(Saving).
+			columnNo = BinaryIO.readSavingInt(in, params.tmp);
 			
-			// 対象インデックスの総行数を取得.
-			readBinary(params.tmp, in, params.byte1_4Len);
-			planIndexSize = bin1_4Int(params);
+			// 対象インデックスの総行数を取得(1~4byte).
+			planIndexSize = BinaryIO.readBin1_4Int(
+				in, params.tmp, params.byte1_4Len);
 			
 			// 今回処理するインデックスを登録.
 			index = out.registerIndex(columnNo, planIndexSize);
 			
 			// １つのインデックスを読み込む.
-			readOneIndex(in, params, compressType, index, planIndexSize);
+			readOneIndex(in, params, compressType, index, GENERAL_INDEX,
+				planIndexSize);
 		}
 	}
 	
@@ -254,71 +277,127 @@ public class LoadRim {
 		int latColumnNo;
 		int lonColumnNo;
 		int planIndexSize;
-		RimGeoIndex index;
+		GeoIndex index;
 		
 		// 全体のインデックス情報のループ.
 		for(int i = 0; i < indexLength; i ++) {
 			
-			// 緯度列番号を取得.
-			readBinary(params.tmp, in, 2);
-			latColumnNo = bin2Int(params.tmp);
+			// 緯度列番号を取得(Saving).
+			latColumnNo = BinaryIO.readSavingInt(in, params.tmp);
 			
-			// 経度列番号を取得.
-			readBinary(params.tmp, in, 2);
-			lonColumnNo = bin2Int(params.tmp);
+			// 経度列番号を取得(Saving).
+			lonColumnNo = BinaryIO.readSavingInt(in, params.tmp);
 			
-			// 対象インデックスの総行数を取得.
-			readBinary(params.tmp, in, params.byte1_4Len);
-			planIndexSize = bin1_4Int(params);
+			// 対象インデックスの総行数を取得(1~4byte).
+			planIndexSize = BinaryIO.readBin1_4Int(
+				in, params.tmp, params.byte1_4Len);
 			
 			// 今回処理するインデックスを登録.
 			index = out.registerGeoIndex(
 				latColumnNo, lonColumnNo, planIndexSize);
 			
 			// １つのインデックスを読み込む.
-			readOneIndex(in, params, compressType, index, planIndexSize);
+			readOneIndex(in, params, compressType, index, GEO_INDEX,
+				planIndexSize);
 		}
+	}
+	
+	// 登録Ngramインデックスを取得.
+	private static final void readNGramIndex(Rim out, InputStream in, RimParams params,
+		CompressType compressType, int indexLength) throws IOException {
+		int columnNo;
+		int ngramLength;
+		int planIndexSize;
+		NgramIndex index;
+		
+		// 全体のインデックス情報のループ.
+		for(int i = 0; i < indexLength; i ++) {
+			
+			// 列番号を取得(Saving).
+			columnNo = BinaryIO.readSavingInt(in, params.tmp);
+			
+			// パースするNgram長を取得(1byte).
+			ngramLength = BinaryIO.readInt1(in, params.tmp);
+			
+			// 対象インデックスの総行数を取得(1~4byte).
+			planIndexSize = BinaryIO.readBin1_4Int(
+				in, params.tmp, params.byte1_4Len);
+			
+			// 今回処理するインデックスを登録.
+			index = out.registerNgramIndex(
+				columnNo, ngramLength, planIndexSize);
+			
+			// １つのインデックスを読み込む.
+			readOneIndex(in, params, compressType, index, NGRAM_INDEX,
+				planIndexSize);
+		}
+	}
+	
+	// Ngram要素を取得.
+	private static final long getNgramValue(InputStream in, RimParams params,
+		int ngramLength)
+		throws IOException {
+		switch(ngramLength) {
+		// unigram.
+		case 1:
+			return ((long)BinaryIO.readInt2(in, params.tmp)) &
+				0x000000000000ffffL;
+		// bigram.
+		case 2:
+			return ((long)BinaryIO.readInt4(in, params.tmp)) &
+				0x00000000ffffffffL;
+		}
+		// trigram.
+		BinaryIO.readBinary(params.tmp, in, 6);
+		final byte[] b = params.tmp;
+		return ((b[0] & 0x00000000000000ffL) << 40) |
+				((b[1] & 0x00000000000000ffL) << 32) |
+				((b[2] & 0x00000000000000ffL) << 24) |
+				((b[3] & 0x00000000000000ffL) << 16) |
+				((b[4] & 0x00000000000000ffL) << 8) |
+				 (b[5] & 0x00000000000000ffL);
 	}
 	
 	// １つのインデックス情報を読み込む.
 	@SuppressWarnings("rawtypes")
 	private static final void readOneIndex(InputStream in, RimParams params,
-		CompressType compressType, Object index, int planIndexSize)
+		CompressType compressType, Object index, int indexType, int planIndexSize)
 		throws IOException {
 		
 		int i, len;
 		int rowIdLength;
 		Object value;
 		int[] rowIdList = null;
+		int[] ngramPosition = null;
 		
 		byte[] data;
 		RbInputStream rbIn;
 		final int[] dataLen = new int[1];
 		
-		// インデックスタイプを取得.
-		int indexType = -1;
-		if(index instanceof RimIndex) {
-			indexType = 0;
-		} else if(index instanceof RimGeoIndex) {
-			indexType = 1;
-		}
-		
 		// このインデックスの列型を取得.
+		int ngramLength = -1;
 		ColumnType columnType = null;
 		switch(indexType) {
-		case 0: // RimIndex.
-			columnType = ((RimIndex)index).getColumnType();
+		// Index.
+		case GENERAL_INDEX:
+			columnType = ((GeneralIndex)index).getColumnType();
 			break;
-		case 1: // RimGeoIndex.
+		// GeoIndex.
+		case GEO_INDEX:
 			columnType = ColumnType.Long;
+			break;
+		// NgramIndex
+		case NGRAM_INDEX:
+			columnType = ColumnType.Long;
+			ngramLength = ((NgramIndex)index).getNgramLength();
 			break;
 		}
 		
 		// 圧縮フラグを取得.
-		boolean compFlag = readBoolean(in, params.tmp);
+		boolean compFlag = BinaryIO.readBoolean(in, params.tmp);
 		
 		// データ塊長を取得.
-		len = readInteger(in, params.tmp);
+		len = BinaryIO.readSavingInt(in, params.tmp);
 		
 		// 塊受付バッファサイズが小さい場合.
 		if(params.chunkedBuffer.length < len) {
@@ -327,7 +406,7 @@ public class LoadRim {
 		}
 		
 		// 塊データを取得.
-		readBinary(params.chunkedBuffer, in, len);
+		BinaryIO.readBinary(params.chunkedBuffer, in, len);
 		
 		// 圧縮されている場合、塊を解凍して取得.
 		data = readDecompress(
@@ -339,12 +418,25 @@ public class LoadRim {
 		// インデックス追加完了までループ.
 		while(true) {
 			
-			// 1つの最適化されたインデックス情報を取得.
-			value = getValue(rbIn, params, columnType);
+			// インデックスの対象要素を取得.
+			value = null;
+			switch(indexType) {
+			// Index.
+			case GENERAL_INDEX:
+				value = getValue(rbIn, params, columnType);
+				break;
+			// GeoIndex.
+			case GEO_INDEX:
+				value = getValue(rbIn, params, columnType);
+				break;
+			// NgramIndex.
+			case NGRAM_INDEX:
+				value = getNgramValue(rbIn, params, ngramLength);
+				break;
+			}
 			
 			// 1つの同一要素に対する行番号数を取得.
-			readBinary(params.tmp, rbIn, params.byte1_4Len);
-			rowIdLength = bin1_4Int(params);
+			rowIdLength = BinaryIO.readSavingInt(rbIn, params.tmp);
 			
 			// RowIdList のバッファが足りない場合は生成.
 			if(rowIdList == null || rowIdList.length < rowIdLength) {
@@ -353,20 +445,36 @@ public class LoadRim {
 			
 			// RowIdListをセット.
 			for(i = 0; i < rowIdLength; i ++) {
-				readBinary(params.tmp, rbIn, params.byte1_4Len);
-				rowIdList[i] = bin1_4Int(params);
+				rowIdList[i] = BinaryIO.readBin1_4Int(
+					rbIn, params.tmp, params.byte1_4Len);
 			}
 			
 			// 対象のインデックスに情報を追加.
 			switch(indexType) {
-			case 0: // RimIndex.
-				len = ((RimIndex)index).add(
+			// Index.
+			case GENERAL_INDEX:
+				len = ((GeneralIndex)index).add(
 					(Comparable)value, rowIdList, rowIdLength);
 				break;
-			case 1: // RimGeoIndex.
-				len = ((RimGeoIndex)index).add(
+			// GeoIndex.
+			case GEO_INDEX:
+				len = ((GeoIndex)index).add(
 					(Long)value, rowIdList, rowIdLength);
 				break;
+			// NgramIndex.
+			case NGRAM_INDEX:
+				// Ngramポジションのバッファが足りない場合は生成.
+				if(ngramPosition == null || ngramPosition.length < rowIdLength) {
+					ngramPosition = new int[rowIdLength];
+				}
+				
+				// Ngramポジションを取得.
+				for(i = 0; i < rowIdLength; i ++) {
+					ngramPosition[i] = BinaryIO.readSavingInt(
+						rbIn, params.tmp);
+				}
+				len = ((NgramIndex)index).add(
+					(Long)value, rowIdList, ngramPosition, rowIdLength);
 			}
 			
 			// 予定長の取得が行われた場合.
@@ -383,94 +491,6 @@ public class LoadRim {
 		}
 	}
 	
-	// 1バイトのバイナリをInt変換.
-	private static final int bin1Int(byte[] tmp) {
-		return tmp[0] & 0x000000ff;
-	}
-	
-	// 2バイトのバイナリをInt変換.
-	private static final int bin2Int(byte[] tmp) {
-		return
-			  ((tmp[0] & 0x000000ff) << 8)
-			|  (tmp[1] & 0x000000ff);
-	}
-	
-	// 3バイトのバイナリをInt変換.
-	private static final int bin3Int(byte[] tmp) {
-		return
-			  ((tmp[0] & 0x000000ff) << 16)
-			| ((tmp[1] & 0x000000ff) << 8)
-			|  (tmp[2] & 0x000000ff);
-	}
-	
-	// 4バイトのバイナリをInt変換.
-	private static final int bin4Int(byte[] tmp) {
-		return
-			  ((tmp[0] & 0x000000ff) << 24)
-			| ((tmp[1] & 0x000000ff) << 16)
-			| ((tmp[2] & 0x000000ff) << 8)
-			|  (tmp[3] & 0x000000ff);
-	}
-
-	// 8バイトのバイナリをLong変換.
-	private static final long bin8Long(byte[] tmp) {
-		return 
-			  ((tmp[0] & 0x00000000000000ffL) << 56L)
-			| ((tmp[1] & 0x00000000000000ffL) << 48L)
-			| ((tmp[2] & 0x00000000000000ffL) << 40L)
-			| ((tmp[3] & 0x00000000000000ffL) << 32L)
-			| ((tmp[4] & 0x00000000000000ffL) << 24L)
-			| ((tmp[5] & 0x00000000000000ffL) << 16L)
-			| ((tmp[6] & 0x00000000000000ffL) << 8L)
-			|  (tmp[7] & 0x00000000000000ffL);
-	}
-	
-	// 1byte から 4byte までの条件を取得.
-	private static final int bin1_4Int(RimParams params) {
-		return bin1_4Int(params.tmp, params.byte1_4Len);
-	}
-	
-	// 1byte から 4byte までの条件を取得.
-	private static final int bin1_4Int(byte[] tmp, int byte1_4Len) {
-		switch(byte1_4Len) {
-		case 1: return bin1Int(tmp);
-		case 2: return bin2Int(tmp);
-		case 3: return bin3Int(tmp);
-		case 4: return bin4Int(tmp);
-		default: return bin4Int(tmp);
-		}
-	}
-	
-	// 指定長のバイナリを取得.
-	private static final void readBinary(byte[] out, InputStream in, int len)
-		throws IOException {
-		final int rLen = in.read(out, 0, len);
-		if(len != rLen) {
-			throw new RimException("Failed to read Rim information(" +
-				len + " / " + rLen + ")");
-		}
-	}
-	
-	
-	// Stringオブジェクトを取得.
-	// UTF8専用.
-	private static final String convertString(InputStream in, RimParams params,
-		int strHeaderLen)
-		throws IOException {
-		readBinary(params.tmp, in, strHeaderLen);
-		final int len = bin1_4Int(params.tmp, strHeaderLen);
-		if(len == 0) {
-			return "";
-		}
-		// 文字列取得用バッファを取得.
-		final byte[] bin = RimUtil.getStringByteArray(params.strBuf, len);
-		readBinary(bin, in, len);
-		
-		// バイナリから文字列変換用バッファを取得.
-		final char[] chr = RimUtil.getStringCharArray(params.strBuf, len);
-		return UTF8IO.decode(chr, bin, 0, len);
-	}
-	
 	// シンボルのチェック.
 	private static final void checkSimbol(InputStream in, byte[] tmp)
 		throws IOException {
@@ -483,96 +503,6 @@ public class LoadRim {
 				throw new RimException("Not in Rim format.");
 			}
 		}
-	}
-	
-	// ヘッダ情報を取得.
-	private static final Object[] readHeader(InputStream in, RimParams params)
-		throws IOException {
-		
-		int i;
-		
-		// 列数を取得(2byte).
-		readBinary(params.tmp, in, 2);
-		int columnLength = bin2Int(params.tmp);
-				
-		// 列名を取得(len:1byte, utf8).
-		String[] columns = new String[columnLength];
-		for(i = 0; i < columnLength; i ++) {
-			// 列名を取得(ヘッダ:1byte)
-			columns[i] = convertString(in, params, 1);
-		}
-		
-		// 列型を取得(1byte).
-		ColumnType[] columnTypes = new ColumnType[columnLength];
-		for(i = 0; i < columnLength; i ++) {
-			// 列型を取得(1byte)
-			readBinary(params.tmp, in, 1);
-			columnTypes[i] = ColumnType.get(bin1Int(params.tmp));
-		}
-		// [0]: 列数, [1]: 列名, [2]: 列型.
-		return new Object[] {columnLength, columns, columnTypes};
-	}
-	
-	// Booleanオブジェクトを読み込む.
-	private static final Boolean readBoolean(InputStream in, byte[] tmp)
-		throws IOException {
-		readBinary(tmp, in, 1);
-		return bin1Int(tmp) != 0;
-	}
-	
-	// Byteオブジェクトを読み込む.
-	private static final Byte readByte(InputStream in, byte[] tmp)
-		throws IOException {
-		readBinary(tmp, in, 1);
-		return (byte)bin1Int(tmp);
-	}
-	
-	// Shortオブジェクトを読み込む.
-	private static final Short readShort(InputStream in, byte[] tmp)
-		throws IOException {
-		readBinary(tmp, in, 2);
-		return (short)bin2Int(tmp);
-	}
-	
-	// Integerオブジェクトを読み込む.
-	private static final Integer readInteger(InputStream in, byte[] tmp)
-		throws IOException {
-		readBinary(tmp, in, 4);
-		return bin4Int(tmp);
-	}
-	
-	// Longオブジェクトを読み込む.
-	private static final Long readLong(InputStream in, byte[] tmp)
-		throws IOException {
-		readBinary(tmp, in, 8);
-		return bin8Long(tmp);
-	}
-	
-	// Floatオブジェクトを読み込む.
-	private static final Float readFloat(InputStream in, byte[] tmp)
-		throws IOException {
-		readBinary(tmp, in, 4);
-		return Float.intBitsToFloat(bin4Int(tmp));
-	}
-	
-	// Doubleオブジェクトを読み込む.
-	private static final Double readDouble(InputStream in, byte[] tmp)
-		throws IOException {
-		readBinary(tmp, in, 8);
-		return Double.longBitsToDouble(bin8Long(tmp));
-	}
-	
-	// Stringオブジェクトを読み込む.
-	private static final String readString(InputStream in, RimParams params)
-		throws IOException {
-		return convertString(in, params, params.stringHeaderLength);
-	}
-	
-	// Dateオブジェクトを読み込む.
-	private static final Date readDate(InputStream in, byte[] tmp)
-		throws IOException {
-		readBinary(tmp, in, 8);
-		return new Date(bin8Long(tmp));
 	}
 	
 	// 圧縮されてる場合は解凍して取得.
@@ -670,23 +600,23 @@ public class LoadRim {
 		ColumnType type) throws IOException {
 		switch(type) {
 		case Boolean:
-			return readBoolean(in, params.tmp);
+			return BinaryIO.readBoolean(in, params.tmp);
 		case Byte:
-			return readByte(in, params.tmp);
+			return (byte)BinaryIO.readInt1(in, params.tmp);
 		case Short:
-			return readShort(in, params.tmp);
+			return (short)BinaryIO.readInt2(in, params.tmp);
 		case Integer:
-			return readInteger(in, params.tmp);
+			return BinaryIO.readInt4(in, params.tmp);
 		case Long:
-			return readLong(in, params.tmp);
+			return BinaryIO.readLong(in, params.tmp);
 		case Float:
-			return readFloat(in, params.tmp);
+			return BinaryIO.readFloat(in, params.tmp);
 		case Double:
-			return readDouble(in, params.tmp);
+			return BinaryIO.readDouble(in, params.tmp);
 		case String:
-			return readString(in, params);
+			return BinaryIO.readString(in, params.tmp, params.strBuf);
 		case Date:
-			return readDate(in, params.tmp);
+			return BinaryIO.readDate(in, params.tmp);
 		}
 		throw new RimException("Unknown column type: " + type);
 	}
@@ -699,47 +629,47 @@ public class LoadRim {
 		switch(type) {
 		case Boolean:
 			for(int i = 0; i < len; i ++) {
-				out[i] = readBoolean(in, params.tmp);
+				out[i] = BinaryIO.readBoolean(in, params.tmp);
 			}
 			return;
 		case Byte:
 			for(int i = 0; i < len; i ++) {
-				out[i] = readByte(in, params.tmp);
+				out[i] = (byte)BinaryIO.readInt1(in, params.tmp);
 			}
 			return;
 		case Short:
 			for(int i = 0; i < len; i ++) {
-				out[i] = readShort(in, params.tmp);
+				out[i] = (short)BinaryIO.readInt2(in, params.tmp);
 			}
 			return;
 		case Integer:
 			for(int i = 0; i < len; i ++) {
-				out[i] = readInteger(in, params.tmp);
+				out[i] = BinaryIO.readInt4(in, params.tmp);
 			}
 			return;
 		case Long:
 			for(int i = 0; i < len; i ++) {
-				out[i] = readLong(in, params.tmp);
+				out[i] = BinaryIO.readLong(in, params.tmp);
 			}
 			return;
 		case Float:
 			for(int i = 0; i < len; i ++) {
-				out[i] = readFloat(in, params.tmp);
+				out[i] = BinaryIO.readFloat(in, params.tmp);
 			}
 			return;
 		case Double:
 			for(int i = 0; i < len; i ++) {
-				out[i] = readDouble(in, params.tmp);
+				out[i] = BinaryIO.readDouble(in, params.tmp);
 			}
 			return;
 		case String:
 			for(int i = 0; i < len; i ++) {
-				out[i] = readString(in, params);
+				out[i] = BinaryIO.readString(in, params.tmp, params.strBuf);
 			}
 			return;
 		case Date:
 			for(int i = 0; i < len; i ++) {
-				out[i] = readDate(in, params.tmp);
+				out[i] = BinaryIO.readDate(in, params.tmp);
 			}
 			return;
 		}
@@ -761,22 +691,23 @@ public class LoadRim {
 		Rim rim = load(file);
 		
 		// 駅の緯度経度インデックスを取得.
-		RimGeoIndex index = rim.getGeoIndex("lat", "lon");
+		GeoIndex index = rim.getGeoIndex("lat", "lon");
 		
 		// ベンチマーク計測.
-		int benchLen = 100;
+		int benchLen = 1;
 		
 		boolean ascFlag = true;
 		
 		// 東京タワーの周辺を検索.
 		double lat = 35.658581;
 		double lon = 139.745433;
-		int distance = 1000000;
+		int distance = 1000;
 		
 		RimResultGeo result;
 		
 		long time;
 		long all = 0L;
+		/**
 		for(int i = 0; i < benchLen; i ++) {
 			time = System.currentTimeMillis();
 			//result = index.searchRadius(ascFlag, lat, lon, distance);
@@ -786,16 +717,17 @@ public class LoadRim {
 			}
 			all += System.currentTimeMillis() - time;
 		}
+		**/
 		
-		//result = index.searchRadius(ascFlag, lat, lon, distance);
-		result = index.searchRadius(lat, lon, distance);
+		result = index.searchRadius(ascFlag, lat, lon, distance);
+		//result = index.searchRadius(lat, lon, distance);
 		
 		int cnt = 0;
 		while(result.hasNext()) {
-			result.next();
-			//System.out.println("nextRow: " + result.nextRow());
-			//System.out.println(" distance: " + result.getValue() +
-			//	" / " + result.getStrictRedius() + " m");
+			//result.next();
+			System.out.println("nextRow: " + result.nextRow());
+			System.out.println(" distance: " + result.getValue() +
+				" / " + result.getStrictRedius() + " m");
 			cnt ++;
 		}
 		System.out.println("駅 :" + cnt + " 件");
@@ -866,7 +798,7 @@ public class LoadRim {
 		ascFlag = z == 0;
 		
 		RimBody body = rim.getBody();
-		RimIndex index = rim.getIndex(column);
+		GeneralIndex index = rim.getIndex(column);
 		
 		RimResult ri;
 		

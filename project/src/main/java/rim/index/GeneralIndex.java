@@ -13,10 +13,10 @@ import rim.exception.RimException;
 import rim.util.ObjectList;
 
 /**
- * Rimインデックス情報.
+ * 一般的なインデックス.
  */
 @SuppressWarnings({"unchecked", "rawtypes"})
-public class RimIndex {
+public class GeneralIndex {
 	// RimBody.
 	private RimBody body;
 	// 列番号.
@@ -40,7 +40,7 @@ public class RimIndex {
 	 * @param columnNo このインデックスの列番号が設定されます.
 	 * @param planIndexSize このインデックスの予定登録行数を設定します.
 	 */
-	public RimIndex(RimBody body, int columnNo, int planIndexSize) {
+	public GeneralIndex(RimBody body, int columnNo, int planIndexSize) {
 		this.body = body;
 		this.columnNo = columnNo;
 		this.columnType = body.getColumnType(columnNo);
@@ -105,7 +105,6 @@ public class RimIndex {
 			throw new RimException("Index addition is complete.");
 		}
 	}
-
 
 	/**
 	 * インデックス対象の列番号を取得.
@@ -444,7 +443,7 @@ public class RimIndex {
 		// 次の情報が取得可能な場合 true.
 		private boolean nextFlag;
 		// このインデックス管理情報.
-		private RimIndex rimIndex;
+		private GeneralIndex rimIndex;
 		// 現在取得中のIndex位置.
 		private int indexPos;
 		
@@ -472,7 +471,7 @@ public class RimIndex {
 		 * @param resultEnd 読み込み終了条件を設定します.
 		 */
 		public ResultSearchIndex(boolean nextFlag, boolean ascFlag,
-			RimIndex rimIndex, int indexPos, ResultEnd resultEnd) {
+			GeneralIndex rimIndex, int indexPos, ResultEnd resultEnd) {
 			// posが範囲外の場合はnullが返却される.
 			int elementPos = -1;
 			final RimIndexElement element = rimIndex.getElementByNo(indexPos);
@@ -602,7 +601,7 @@ public class RimIndex {
 		implements RimResult {
 		
 		// このインデックス管理情報.
-		private RimIndex rimIndex;
+		private GeneralIndex rimIndex;
 		// 現在取得中のIndex位置.
 		private int indexPos;
 		
@@ -632,7 +631,7 @@ public class RimIndex {
 		 * @param exclusionEnd 除外終了位置を設定します.
 		 * @param resultEnd 読み込み終了条件を設定します.
 		 */
-		public ResultSearchIndexNot(boolean ascFlag, RimIndex rimIndex,
+		public ResultSearchIndexNot(boolean ascFlag, GeneralIndex rimIndex,
 			int indexPos, int exclusionStart, int exclusionEnd) {
 			// 指定されたインデックス位置が除外番号範囲の場合.
 			if(ascFlag) {
@@ -771,7 +770,7 @@ public class RimIndex {
 		private int targetIn;
 		
 		// このインデックス管理情報.
-		private RimIndex rimIndex;
+		private GeneralIndex rimIndex;
 		// not in 条件.
 		private RowsFlag notInPositions;
 		// 現在の読み込み中行番号.
@@ -802,7 +801,7 @@ public class RimIndex {
 		 * @param values In条件群を設定します.
 		 */
 		public ResultSearchIndexIn(boolean ascFlag, boolean notEq,
-			RimIndex rimIndex, Object... values) {
+			GeneralIndex rimIndex, Object... values) {
 			
 			int len = values.length;
 			// in条件が指定されていない場合.

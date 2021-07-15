@@ -3,7 +3,7 @@ package rim.index;
 import rim.core.ColumnType;
 
 /**
- * RimIndex要素.
+ * Index要素.
  */
 @SuppressWarnings("rawtypes")
 public interface RimIndexElement extends Comparable {

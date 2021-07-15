@@ -563,4 +563,24 @@ public final class SearchUtil {
 		return -1;
 	}
 
+	/**
+	 * 1つのNgram文字情報を生成.
+	 * @param str 対象の文字列を設定します.
+	 * @param off オフセット値を設定します.
+	 * @param ngramLength Ngramの長さを設定します.
+	 * @return Ngram文字情報を設定します.
+	 */
+	public static final long getNgramString(String str, int off, int ngramLength) {
+		switch(ngramLength) {
+		case 1:
+			return (((long)str.charAt(off)) & 0x000000000000ffffL);
+		case 2:
+			return (((long)str.charAt(off)) & 0x000000000000ffffL) |
+				((((long)str.charAt(off + 1)) & 0x000000000000ffffL) << 16L);
+		}
+		//case 3:
+		return (((long)str.charAt(off)) & 0x000000000000ffffL) |
+			((((long)str.charAt(off + 1)) & 0x000000000000ffffL) << 16L) |
+			((((long)str.charAt(off + 2)) & 0x000000000000ffffL) << 32L);
+	}
 }

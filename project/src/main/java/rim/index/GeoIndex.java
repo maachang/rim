@@ -15,25 +15,24 @@ import rim.util.IndexKeyList;
 import rim.util.ObjectList;
 
 /**
- * RimGeo(緯度経度から半径検索)インデックス情報.
+ * Geo(緯度経度から半径検索)インデックス情報.
  */
 @SuppressWarnings("rawtypes")
-public class RimGeoIndex {
-	// GeoQuadインデックス型(long).
+public class GeoIndex {
+	// インデックス型(long).
 	private static final ColumnType VALUE_TYPE = ColumnType.Long;
 	
 	// RimBody.
 	private RimBody body;
-	// 元の緯度を示す列番号.
+	// Bodyに対する緯度を示す列番号.
 	private int latColumnNo;
-	// 元の経度を示す列番号.
+	// Bodyに対する経度を示す列番号.
 	private int lonColumnNo;
 	
 	// インデックス内の行を管理するバイト数.
 	private int indexByte;
 	// インデックス情報.
-	private ObjectList<RimIndexElement> index =
-		new ObjectList<RimIndexElement>();
+	private ObjectList<RimIndexElement> index = new ObjectList<RimIndexElement>();
 	// 登録予定のインデックス総行数.
 	private int planIndexSize;
 	
@@ -49,7 +48,7 @@ public class RimGeoIndex {
 	 * @param lonColumnNo このインデックスの経度列番号が設定されます.
 	 * @param planIndexSize このインデックスの予定登録行数を設定します.
 	 */
-	public RimGeoIndex(RimBody body, int latColumnNo, int lonColumnNo,
+	public GeoIndex(RimBody body, int latColumnNo, int lonColumnNo,
 		int planIndexSize) {
 		this.body = body;
 		this.latColumnNo = latColumnNo;

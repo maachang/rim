@@ -27,11 +27,6 @@ public class RimConstants {
 	};
 
 	/**
-	 * デフォルトの文字列の長さを表すバイト数.
-	 */
-	public static final int DEFAULT_STRING_HEADER_LENGTH = 2;
-
-	/**
 	 * CSVファイル読み込みデフォルト文字コード.
 	 */
 	//public static final String DEFAULT_CSV_CHARSET = "Windows-31J";
@@ -41,4 +36,20 @@ public class RimConstants {
 	 * CSVファイル区切り文字.
 	 */
 	public static final String DEFAULT_CSV_SEPARATION = ",";
+	
+	/**
+	 * デフォルトのパースするNgram長.
+	 */
+	public static final int DEFAULT_NGRAM_LENGTH = 2;
+	
+	/**
+	 * 最小のパースするNgram長.
+	 */
+	public static final int MIN_NGRAM_LENGTH = 1;
+	
+	/**
+	 * 最大のパースするNgram長.
+	 */
+	public static final int MAX_NGRAM_LENGTH = 3;
+	
 }

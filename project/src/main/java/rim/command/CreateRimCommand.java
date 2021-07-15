@@ -1,5 +1,9 @@
 package rim.command;
 
+import java.io.BufferedOutputStream;
+import java.io.FileOutputStream;
+import java.io.OutputStream;
+
 import rim.RimConstants;
 import rim.SaveRim;
 import rim.compress.CompressType;
@@ -26,7 +30,7 @@ public class CreateRimCommand {
 	// ヘルプ情報.
 	private final void help() {
 		System.out.println("");
-		System.out.println("Rimが定める規定のCSVファイルをRim変換します.");
+		System.out.println("CSVファイルをRim変換します.");
 		System.out.println("");
 		System.out.println("Usage: crim [options]");
 		System.out.println(" options 説明:");
@@ -37,7 +41,7 @@ public class CreateRimCommand {
 		System.out.println("  -h [--help]");
 		System.out.println("     ヘルプ情報を表示.");
 
-		System.out.println("  -n [--csv] {ファイル名}");
+		System.out.println("  -f [--csv] {ファイル名}");
 		System.out.println("      ※ この条件は必須です.");
 		System.out.println("     変換元のCSVファイル名を設定します.");
 		
@@ -80,18 +84,22 @@ public class CreateRimCommand {
 		System.out.println("      > -g lat,lon -g abc,def");
 		System.out.println("     この場合 lat,lon と abc,def がGeoインデックスになります.");
 		System.out.println("     緯度列名と経度列名の区切り文字は[,]で区切ります.");
+		
+		System.out.println("  -n{level} [--ngram] [--unigram] [--bigram] [--trigram] {列名} ....");
+		System.out.println("     列名を設定して、ngramのインデックスを設定します.");
+		System.out.println("     この内容は以下のように複数指定可能です.");
+		System.out.println("      > -n name -n description");
+		System.out.println("     この場合 name と description がNgramインデックスになります.");
+		System.out.println("     また level を設定することでNgramの精度と速度が変わります.");
+		System.out.println("      [-n1] [--unigram] でユニグラムでインデックスを作成します.");
+		System.out.println("      [-n] [-n2] [--ngram] [--bigram] でバイグラムでインデックスを作成します.");
+		System.out.println("      [-n3] [--trigram] でトリグラムでインデックスを作成します.");
 
 		System.out.println("  -c [--charset] {文字コード}");
 		System.out.println("     CSVファイルの文字コードを設定します");
 		System.out.println("     設定しない場合は \"" +
 			RimConstants.DEFAULT_CSV_CHARSET + "\" が設定されます");
 
-		System.out.println("  -l [--length] {バイト数}");
-		System.out.println("     文字列の長さを表すバイト数を設定します.");
-		System.out.println("     このバイト数は 1～4 バイトの範囲で設定します.");
-		System.out.println("     設定しない場合は " +
-			RimConstants.DEFAULT_STRING_HEADER_LENGTH +
-			" が設定されます.");
 		System.out.println("");
 	}
 
@@ -111,8 +119,8 @@ public class CreateRimCommand {
 	private static final void viewReport(
 		long time, int rowAll, String csvFile, String outFileName,
 		ObjectList<String> indexList, ObjectList<String[]> geoIndexList,
-		CompressType compressType, String charset, String separation,
-		int stringHeaderLength, Object option)
+		ObjectList<Object[]> ngramIndexList, CompressType compressType,
+		String charset, String separation, Object option)
 		throws Exception {
 		time = System.currentTimeMillis() - time;
 
@@ -128,13 +136,14 @@ public class CreateRimCommand {
 
 		System.out.println("出力先rim: " + outFileName);
 		System.out.println("fileSize: " + outSize + " byte");
-		System.out.println("圧縮率: " + (int)((double)outSize / (double)inSize * 100d) + " %");
+		System.out.println("圧縮率: " + 
+			(int)((double)outSize / (double)inSize * 100d) + " %");
 
 		System.out.println();
 
 		System.out.println("変換行数: " + rowAll + " row");
+		
 		System.out.println("登録Index数: " + indexList.size());
-
 		int len = indexList.size();
 		for(int i = 0; i < len; i ++) {
 			System.out.println("  index(" + (i + 1) + "): " + indexList.get(i));
@@ -146,6 +155,14 @@ public class CreateRimCommand {
 			System.out.println("  geoIndex(" + (i + 1) + "): " +
 				geoIndexList.get(i)[0] + ", " + geoIndexList.get(i)[1]);
 		}
+		
+		System.out.println("登録NgramIndex数: " + ngramIndexList.size());
+		len = ngramIndexList.size();
+		for(int i = 0; i < len; i ++) {
+			System.out.println("  ngramIndex(" + (i + 1) + "): " +
+				ngramIndexList.get(i)[0] +
+				"(" + ngramLengthByString(ngramIndexList.get(i)[1]) + ")");
+		}
 
 		System.out.println();
 		
@@ -155,9 +172,17 @@ public class CreateRimCommand {
 		}
 		System.out.println("CSV文字コード: " + charset);
 		System.out.println("CSV区切り文字: [" + separation + "]");
-		System.out.println("String長管理Byte数: " + stringHeaderLength + " byte");
 
 		System.out.println();
+	}
+	
+	// ngram長を文字列に変換.
+	private static final String ngramLengthByString(final Object length) {
+		switch((Integer)length) {
+		case 1: return "unigram";
+		case 2: return "bigram";
+		}
+		return "trigram";
 	}
 
 	// コマンド実行.
@@ -225,14 +250,8 @@ public class CreateRimCommand {
 			separation = RimConstants.DEFAULT_CSV_SEPARATION;
 		}
 
-		// 文字列ヘッダ長を取得.
-		Integer StringHeaderLength = args.getInt("-l", "--length");
-		if(StringHeaderLength == null) {
-			StringHeaderLength = RimConstants.DEFAULT_STRING_HEADER_LENGTH;
-		}
-
 		// 入出力先を取得.
-		String csvFile = args.get("-n", "--csv");
+		String csvFile = args.get("-f", "--csv");
 		String outFileName = args.get("-o", "--output");
 		if(csvFile == null) {
 			help();
@@ -290,17 +309,48 @@ public class CreateRimCommand {
 					index.substring(p + 1)
 				});
 		}
+		
+		// ngramインデックス情報を取得.
+		ObjectList<Object[]> ngramIndexList = new ObjectList<Object[]>();
+		// unigram.
+		for(int i = 0;; i ++) {
+			String index = args.next(i, "-n1", "--unigram");
+			if(index == null) {
+				break;
+			}
+			ngramIndexList.add(new Object[] {index, 1});
+		}
+		// bigram.
+		for(int i = 0;; i ++) {
+			String index = args.next(i, "-n", "-n2", "--ngram", "--bigram");
+			if(index == null) {
+				break;
+			}
+			ngramIndexList.add(new Object[] {index, 2});
+		}
+		// trigram.
+		for(int i = 0;; i ++) {
+			String index = args.next(i, "-n3", "--trigram");
+			if(index == null) {
+				break;
+			}
+			ngramIndexList.add(new Object[] {index, 3});
+		}
 
 		// 変換処理.
 		CsvReader csv = null;
 		SaveRim convRim = null;
+		OutputStream out = null;
 		try {
 			// CSVオープン.
 			csv = new CsvReader(csvFile, charset, separation);
+			
+			// 書き込み先ファイルをオープン.
+			out = new BufferedOutputStream(new FileOutputStream(outFileName));
 
 			// 変換オブジェクトを作成.
-			convRim = new SaveRim(csv, outFileName, compressType,
-				StringHeaderLength, option);
+			convRim = new SaveRim(
+				csv, out, compressType, option);
 
 			// インデックスの設定.
 			int len = indexList.size();
@@ -312,7 +362,16 @@ public class CreateRimCommand {
 			len = geoIndexList.size();
 			for(int i = 0; i < len; i ++) {
 				convRim.addGeoIndex(
-					geoIndexList.get(i)[0], geoIndexList.get(i)[1]);
+					geoIndexList.get(i)[0],
+					geoIndexList.get(i)[1]);
+			}
+			
+			// ngramインデックスの設定.
+			len = ngramIndexList.size();
+			for(int i = 0; i < len; i ++) {
+				convRim.addNgramIndex(
+					(String)ngramIndexList.get(i)[0],
+					(Integer)ngramIndexList.get(i)[1]);
 			}
 
 			// ファイル出力.
@@ -320,18 +379,24 @@ public class CreateRimCommand {
 
 			// 後処理.
 			csv.close(); csv = null;
+			out.close(); out = null;
 			convRim.close(); convRim = null;
 
 			// 処理結果のレポートを表示.
 			viewReport(time, rowAll, csvFile, outFileName, indexList,
-				geoIndexList, compressType, charset, separation,
-				StringHeaderLength, option);
+				geoIndexList, ngramIndexList, compressType, charset,
+				separation, option);
 
 			System.exit(0);
 		} finally {
 			if(csv != null) {
 				try {
 					csv.close();
+				} catch(Exception e) {}
+			}
+			if(out != null) {
+				try {
+					out.close();
 				} catch(Exception e) {}
 			}
 			if(convRim != null) {

@@ -8,8 +8,9 @@ import rim.core.LikeAnalysis;
 import rim.core.LikeParser;
 import rim.core.SearchUtil;
 import rim.exception.RimException;
-import rim.index.RimGeoIndex;
-import rim.index.RimIndex;
+import rim.index.GeneralIndex;
+import rim.index.GeoIndex;
+import rim.index.NgramIndex;
 import rim.util.FixedSearchArray;
 import rim.util.ObjectList;
 import rim.util.TypesUtil;
@@ -116,11 +117,11 @@ public class RimBody {
 	 * インデックスの作成.
 	 * @param columnNo 列番号を設定します.
 	 * @param planIndexSize このインデックスの予定長を設定します.
-	 * @return RimIndex 空のRimIndexが返却されます.
+	 * @return RimIndex 空のGeneralIndexが返却されます.
 	 */
-	protected final RimIndex createIndex(int columnNo, int planIndexSize) {
+	protected final GeneralIndex createIndex(int columnNo, int planIndexSize) {
 		checkNoFix();
-		return new RimIndex(
+		return new GeneralIndex(
 			this,
 			columnNo,
 			planIndexSize);
@@ -131,18 +132,34 @@ public class RimBody {
 	 * @param latColumnNo 緯度列番号を設定します.
 	 * @param lonColumnNo 経度列番号を設定します.
 	 * @param planIndexSize このインデックスの予定長を設定します.
-	 * @return RimGeoIndex 空のRimGeoIndexが返却されます.
+	 * @return RimGeoIndex 空のGeoIndexが返却されます.
 	 */
-	protected final RimGeoIndex createGeoIndex(int latColumnNo, int lonColumnNo,
+	protected final GeoIndex createGeoIndex(int latColumnNo, int lonColumnNo,
 		int planIndexSize) {
 		checkNoFix();
-		return new RimGeoIndex(
+		return new GeoIndex(
 			this,
 			latColumnNo,
 			lonColumnNo,
 			planIndexSize);
 	}
-
+	
+	/**
+	 * Ngramインデックスの作成.
+	 * @param columnNo 列番号を設定します.
+	 * @param ngramLength Ngram長を設定します.
+	 * @param planIndexSize このインデックスの予定長を設定します.
+	 * @return NgramIndex 空のNgramインデックスが返却されます.
+	 */
+	protected final NgramIndex createNgramIndex(int columnNo, int ngramLength,
+		int planIndexSize) {
+		checkNoFix();
+		return new NgramIndex(
+			this,
+			columnNo,
+			ngramLength,
+			planIndexSize);
+	}
 	
 	/**
 	 * Bodyの追加処理がすべて完了した場合に呼び出します.
