@@ -99,9 +99,9 @@ public class Rim {
 	 */
 	protected NgramIndex registerNgramIndex(int columnNo, int ngramLength,
 		int planIndexSize) {
-		if(indexs.size() >= indexLength) {
+		if(ngramIndexs.size() >= ngramIndexLength) {
 			throw new RimException("The number of ngram indexes to be registered ("
-				+ indexs.size() + ") has been exceeded: " + indexLength);
+				+ ngramIndexs.size() + ") has been exceeded: " + ngramIndexLength);
 		}
 		NgramIndex index = body.createNgramIndex(columnNo, ngramLength, planIndexSize);
 		ngramIndexs.put(columnNo, index);

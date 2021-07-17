@@ -146,7 +146,7 @@ public class NgramIndex {
 	 * @return int Ngram長が返却されます.
 	 */
 	public int getNgramLength() {
-		return ngramIndex;
+		return ngramLength;
 	}
 
 	/**
@@ -319,8 +319,10 @@ public class NgramIndex {
 		
 		// 次の情報を取得.
 		private final boolean nextGet() {
+			// 終端を検出済みの場合.
 			if(topNgram == null) {
 				return false;
+			// 既に nextGetで取得済みで next()関連が呼び出されてない場合.
 			} else if(nextGetFlag) {
 				return true;
 			}
@@ -335,12 +337,16 @@ public class NgramIndex {
 						}
 						nextGetFlag = true;
 						return true;
+					// データの終端の場合.
 					} else if(detailPos >= detailLength) {
-						acquiredRowIdList.clear();
+						if(acquiredRowIdList != null) {
+							acquiredRowIdList.clear();
+						}
 						topNgram = null;
 						return false;
 					}
 				}
+			// 降順の場合.
 			} else {
 				while(true) {
 					if(oneSearch(result, -- detailPos)) {
@@ -351,8 +357,11 @@ public class NgramIndex {
 						}
 						nextGetFlag = true;
 						return true;
+					// データの終端の場合.
 					} else if(detailPos < 0) {
-						acquiredRowIdList.clear();
+						if(acquiredRowIdList != null) {
+							acquiredRowIdList.clear();
+						}
 						topNgram = null;
 						return false;
 					}

@@ -443,21 +443,25 @@ public class LoadRim {
 				rowIdList = new int[rowIdLength];
 			}
 			
-			// RowIdListをセット.
-			for(i = 0; i < rowIdLength; i ++) {
-				rowIdList[i] = BinaryIO.readBin1_4Int(
-					rbIn, params.tmp, params.byte1_4Len);
-			}
-			
 			// 対象のインデックスに情報を追加.
 			switch(indexType) {
 			// Index.
 			case GENERAL_INDEX:
+				// RowIdListをセット.
+				for(i = 0; i < rowIdLength; i ++) {
+					rowIdList[i] = BinaryIO.readBin1_4Int(
+						rbIn, params.tmp, params.byte1_4Len);
+				}
 				len = ((GeneralIndex)index).add(
 					(Comparable)value, rowIdList, rowIdLength);
 				break;
 			// GeoIndex.
 			case GEO_INDEX:
+				// RowIdListをセット.
+				for(i = 0; i < rowIdLength; i ++) {
+					rowIdList[i] = BinaryIO.readBin1_4Int(
+						rbIn, params.tmp, params.byte1_4Len);
+				}
 				len = ((GeoIndex)index).add(
 					(Long)value, rowIdList, rowIdLength);
 				break;
@@ -467,9 +471,12 @@ public class LoadRim {
 				if(ngramPosition == null || ngramPosition.length < rowIdLength) {
 					ngramPosition = new int[rowIdLength];
 				}
-				
-				// Ngramポジションを取得.
+				// RowIdListとNgramポジションを取得.
 				for(i = 0; i < rowIdLength; i ++) {
+					// RowIdList.
+					rowIdList[i] = BinaryIO.readBin1_4Int(
+						rbIn, params.tmp, params.byte1_4Len);
+					// ngramPosition.
 					ngramPosition[i] = BinaryIO.readSavingInt(
 						rbIn, params.tmp);
 				}
@@ -679,8 +686,40 @@ public class LoadRim {
 	
 	// test.
 	public static final void main(String[] args) throws Exception {
-		testGeoSearch(args);
+		//testSearch(args);
+		//testGeoSearch(args);
+		testNgramSearch(args);
 	}
+	
+	// [テスト用]Ngram検索関連のテスト.
+	public static final void testNgramSearch(String[] args) throws Exception {
+		String file = "Z:/home/maachang/project/rim/sampleData/race_horse_master.rim";
+		
+		// ロード処理.
+		Rim rim = load(file);
+		
+		NgramIndex index = rim.getNgramIndex("name");
+		
+		// 昇順の場合は true.
+		boolean ascFlag = false;
+		
+		// 同一行を取得しない場合は true.
+		boolean lineExclusion = true;
+		
+		// Ngram 検索ワード.
+		String value = "ナイ";
+		
+		int cnt = 0;
+		
+		// 検索処理.
+		RimResultNgram result = index.search(ascFlag, lineExclusion, value);
+		while(result.hasNext()) {
+			System.out.println("nextRow: " + result.nextRow());
+			cnt ++;
+		}
+		System.out.println("件数 :" + cnt + " 件");
+	}
+
 	
 	// [テスト用]Geo検索関連のテスト.
 	public static final void testGeoSearch(String[] args) throws Exception {
@@ -696,16 +735,19 @@ public class LoadRim {
 		// ベンチマーク計測.
 		int benchLen = 1;
 		
+		// 昇順の場合は true.
 		boolean ascFlag = true;
 		
 		// 東京タワーの周辺を検索.
 		double lat = 35.658581;
 		double lon = 139.745433;
+		
+		// 1000メートル半径を検索.
 		int distance = 1000;
 		
 		RimResultGeo result;
 		
-		long time;
+		//long time;
 		long all = 0L;
 		/**
 		for(int i = 0; i < benchLen; i ++) {
@@ -733,38 +775,6 @@ public class LoadRim {
 		System.out.println("駅 :" + cnt + " 件");
 		
 		System.out.println("time: " + (all) + " / " + benchLen + " msec");
-	}
-	
-	// [テスト用]対象ファイルのロード時間を計測.
-	protected static final void testLoadTime(String[] args) throws Exception {
-		String loadFileName;
-		
-		if(args.length == 0 || (loadFileName = args[0]).isEmpty()) {
-			System.err.println("ロード対象のファイル名が指定されていません.");
-			System.exit(1);
-			return;
-		}
-		
-		if(!FileUtil.isFile(loadFileName)) {
-			System.err.println("ロード対象のファイルは存在しません: " + loadFileName);
-			System.exit(1);
-			return;
-		}
-		
-		// 計測開始.
-		long tm = System.currentTimeMillis();
-		
-		// データロード.
-		load(loadFileName);
-		
-		// 計測終了.
-		tm = System.currentTimeMillis() - tm;
-		
-		System.out.println("ロードファイル名: " + loadFileName);
-		System.out.println("ファイルサイズ: " + FileUtil.getFileLength(loadFileName) + " byte");
-		System.out.println("ロード時間: " + tm + " ミリ秒");
-		
-		System.exit(0);
 	}
 	
 	// [テスト用]検索関連のテスト.
@@ -973,6 +983,39 @@ public class LoadRim {
 		
 		}}}
 		//}}
+	}
+	
+	
+	// [テスト用]対象ファイルのロード時間を計測.
+	protected static final void testLoadTime(String[] args) throws Exception {
+		String loadFileName;
+		
+		if(args.length == 0 || (loadFileName = args[0]).isEmpty()) {
+			System.err.println("ロード対象のファイル名が指定されていません.");
+			System.exit(1);
+			return;
+		}
+		
+		if(!FileUtil.isFile(loadFileName)) {
+			System.err.println("ロード対象のファイルは存在しません: " + loadFileName);
+			System.exit(1);
+			return;
+		}
+		
+		// 計測開始.
+		long tm = System.currentTimeMillis();
+		
+		// データロード.
+		load(loadFileName);
+		
+		// 計測終了.
+		tm = System.currentTimeMillis() - tm;
+		
+		System.out.println("ロードファイル名: " + loadFileName);
+		System.out.println("ファイルサイズ: " + FileUtil.getFileLength(loadFileName) + " byte");
+		System.out.println("ロード時間: " + tm + " ミリ秒");
+		
+		System.exit(0);
 	}
 	
 	private static final void viewResultSearch(RimResult ri, RimBody body, int maxCnt) {
