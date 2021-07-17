@@ -20,4 +20,13 @@ public interface RimResultNgram extends RimResult {
 	 * @return boolean trueの場合、同一行の再取得が行われます.
 	 */
 	public boolean isAcquiredLine();
+	
+	/**
+	 * Ngramの長さが返却されます.
+	 * @return int Ngramの長さが返却されます.
+	 *             1の場合はUnigramです.
+	 *             2の場合はBigramです.
+	 *             3の場合はTrigramです.
+	 */
+	public int getNgramLength();
 }

@@ -698,6 +698,7 @@ public class LoadRim {
 		// ロード処理.
 		Rim rim = load(file);
 		
+		// ngramIndexを取得.
 		NgramIndex index = rim.getNgramIndex("name");
 		
 		// 昇順の場合は true.

@@ -160,6 +160,16 @@ public class NgramIndex {
 	/**
 	 * 指定文字を含む情報を検索.
 	 * @param ascFlag 昇順で取得する場合は true.
+	 * @param value 検索ワードを設定します.
+	 * @return RimResultNgram 検索結果が返却されます.
+	 */
+	public RimResultNgram search(boolean ascFlag, String value) {
+		return search(ascFlag, true, value, 0, value.length());
+	}
+	
+	/**
+	 * 指定文字を含む情報を検索.
+	 * @param ascFlag 昇順で取得する場合は true.
 	 * @param lineExclusion 同一行番号を取得しない場合は true.
 	 * @param value 検索ワードを設定します.
 	 * @return RimResultNgram 検索結果が返却されます.
@@ -168,6 +178,19 @@ public class NgramIndex {
 		String value) {
 		return search(ascFlag, lineExclusion, value, 0, value.length());
 	}
+	
+	/**
+	 * 指定文字を含む情報を検索.
+	 * @param ascFlag 昇順で取得する場合は true.
+	 * @param value 検索ワードを設定します.
+	 * @param off 検索ワード文字のオフセット値を設定します.
+	 * @param len 検索ワードの長さを設定します.
+	 * @return RimResultNgram 検索結果が返却されます.
+	 */
+	public RimResultNgram search(boolean ascFlag, String value, int off, int len) {
+		return new NgramResult(this, ascFlag, true, value, off, len);
+	}
+
 	
 	/**
 	 * 指定文字を含む情報を検索.
@@ -210,6 +233,8 @@ public class NgramIndex {
 		private int detailPos;
 		// Ngram詳細検索用.
 		private DetailNgram4_4 detailNgram;
+		// Ngram長さ.
+		private int ngramLength;
 		
 		// nextGetで取得済み条件.
 		private boolean nextGetFlag;
@@ -257,6 +282,7 @@ public class NgramIndex {
 			this.body = index.body;
 			this.columnNo = index.columnNo;
 			this.index = index.fixIndex;
+			this.ngramLength = index.ngramLength;
 			
 			this.wordLength = wordLength;
 			this.wordList = wordList;
@@ -419,6 +445,11 @@ public class NgramIndex {
 		@Override
 		public boolean isAcquiredLine() {
 			return acquiredRowIdList == null;
+		}
+		
+		@Override
+		public int getNgramLength() {
+			return ngramLength;
 		}
 	}
 	
@@ -765,7 +796,7 @@ public class NgramIndex {
 		}
 	}
 	
-	// 行番号short, ポジションbyteのNgram詳細.
+	// 行番号int, ポジションbyteのNgram詳細.
 	private static final class DetailNgram4_1 implements DetailNgram {
 		private int rowId;
 		private byte position;
@@ -784,7 +815,7 @@ public class NgramIndex {
 		}
 	}
 	
-	// 行番号short, ポジションshortのNgram詳細.
+	// 行番号int, ポジションshortのNgram詳細.
 	private static final class DetailNgram4_2 implements DetailNgram {
 		private int rowId;
 		private short position;
@@ -803,7 +834,7 @@ public class NgramIndex {
 		}
 	}
 	
-	// 行番号short, ポジションintのNgram詳細.
+	// 行番号int, ポジションintのNgram詳細.
 	private static final class DetailNgram4_4 implements DetailNgram {
 		private int rowId;
 		private int position;
