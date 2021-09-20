@@ -10,6 +10,9 @@ import rim.util.IndexKeyValueList;
  * Rimデータ.
  */
 public class Rim {
+	// Rim情報.
+	private RimInfo info;
+	
 	// Bodyデーター.
 	private RimBody body;
 	
@@ -39,13 +42,15 @@ public class Rim {
 	
 	/**
 	 * コンストラクタ.
+	 * @param info RimInfoを設定します.
 	 * @param body RimBodyを設定します.
 	 * @param indexLength 登録予定のインデックス数を設定します.
 	 * @param geoIndexLength 登録予定のGeoインデックス数を設定します.
 	 * @param ngramIndexLength 登録予定のNgramインデックス数を設定します.
 	 */
-	public Rim(RimBody body, int indexLength, int geoIndexLength,
-		int ngramIndexLength) {
+	public Rim(RimInfo info, RimBody body, int indexLength,
+		int geoIndexLength, int ngramIndexLength) {
+		this.info = info;
 		this.body = body;
 		this.indexLength = indexLength;
 		this.geoIndexLength = geoIndexLength;
@@ -66,6 +71,9 @@ public class Rim {
 		}
 		GeneralIndex index = body.createIndex(columnNo, planIndexSize);
 		indexs.put(columnNo, index);
+		
+		// infoに登録.
+		info.addGeneralIndex(index.getColumnType(), index.getColumnName());
 		return index;
 	}
 	
@@ -87,6 +95,10 @@ public class Rim {
 		GeoIndex index = body.createGeoIndex(
 			latColumnNo, lonColumnNo, planIndexSize);
 		geoIndexs.put(getGeoKey(latColumnNo, lonColumnNo), index);
+		
+		// infoに登録.
+		info.addGeoIndex(
+			index.getLatColumnName(), index.getLonColumnName());
 		return index;
 	}
 	
@@ -105,6 +117,9 @@ public class Rim {
 		}
 		NgramIndex index = body.createNgramIndex(columnNo, ngramLength, planIndexSize);
 		ngramIndexs.put(columnNo, index);
+		
+		// infoに登録.
+		info.addNgramIndex(index.getColumnName(), index.getNgramLength());
 		return index;
 	}
 	
@@ -115,46 +130,47 @@ public class Rim {
 	protected void fix() {
 		if(fixFlag) {
 			return;
-		} else if(!body.isFix()) {
-			body.fix();
 		}
-		// インデックスをFixする.
+		// infoをFix.
+		info.fix();
+		
+		// bodyをFix.
+		body.fix();
+		
+		// GeneralIndexの長さが一致しない場合.
 		int len = indexs.size();
-		// 長さが一致しない場合.
 		if(indexLength != len) {
 			throw new RimException(
 				"Rim data reading is not complete.");
 		}
-		// インデックスをFixする.
+		// GeneralIndexをFixする.
 		for(int i = 0; i < len; i ++) {
 			indexs.valueAt(i).fix();
 		}
 		
-		// GeoインデックスをFixする.
 		len = geoIndexs.size();
-		// 長さが一致しない場合.
+		// GeoIndexの長さが一致しない場合.
 		if(geoIndexLength != len) {
 			throw new RimException(
 				"Rim data reading is not complete.");
 		}
-		// GeoインデックスをFixする.
+		// GeoIndexをFixする.
 		for(int i = 0; i < len; i ++) {
 			geoIndexs.valueAt(i).fix();
 		}
 		
-		// NgramインデックスをFixする.
+		// NgramIndexの長さが一致しない場合.
 		len = ngramIndexs.size();
-		// 長さが一致しない場合.
 		if(ngramIndexLength != len) {
 			throw new RimException(
 				"Rim data reading is not complete.");
 		}
-		// NgramインデックスをFixする.
+		// NgramIndexをFixする.
 		for(int i = 0; i < len; i ++) {
 			ngramIndexs.valueAt(i).fix();
 		}
 		
-		// Fixを完了.
+		// RimのFixを完了.
 		fixFlag = true;
 	}
 
@@ -174,6 +190,15 @@ public class Rim {
 			throw new RimException(
 				"Rim data reading is not complete.");
 		}
+	}
+	
+	/**
+	 * 情報を取得.
+	 * @return RimInfo 情報が返却されます.
+	 */
+	public RimInfo getInfo() {
+		checkFix();
+		return info;
 	}
 
 	/**

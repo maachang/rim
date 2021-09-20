@@ -55,7 +55,17 @@ public class LoadRim {
 	 */
 	public static final Rim load(String rimFileName)
 		throws IOException {
-		return load(new BufferedInputStream(new FileInputStream(rimFileName)));
+		InputStream in = null;
+		try {
+			in = new BufferedInputStream(new FileInputStream(rimFileName));
+			return load(in);
+		} finally {
+			if(in != null) {
+				try {
+					in.close();
+				} catch(Exception e) {}
+			}
+		}
 	}
 	
 	/**
@@ -136,9 +146,12 @@ public class LoadRim {
 			// 登録されているNgramインデックス数を取得(Saving).
 			final int ngramIndexLength = BinaryIO.readSavingInt(in, params.tmp);
 			
+			// RimInfoを生成.
+			final RimInfo info = new RimInfo(rowAll, compressType);
+			
 			// 返却するRimオブジェクトを生成.
 			final RimBody body = new RimBody(columns, columnTypes, rowAll);
-			final Rim ret = new Rim(body, indexLength, geoIndexLength,
+			final Rim ret = new Rim(info, body, indexLength, geoIndexLength,
 				ngramIndexLength);
 			columns = null;
 			
@@ -698,6 +711,8 @@ public class LoadRim {
 		// ロード処理.
 		Rim rim = load(file);
 		
+		System.out.println(rim.getInfo());
+		
 		// ngramIndexを取得.
 		NgramIndex index = rim.getNgramIndex("name");
 		
@@ -985,7 +1000,6 @@ public class LoadRim {
 		}}}
 		//}}
 	}
-	
 	
 	// [テスト用]対象ファイルのロード時間を計測.
 	protected static final void testLoadTime(String[] args) throws Exception {

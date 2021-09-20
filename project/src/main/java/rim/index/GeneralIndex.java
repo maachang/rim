@@ -7,7 +7,7 @@ import rim.RimBody;
 import rim.RimResult;
 import rim.RimRow;
 import rim.core.ColumnType;
-import rim.core.RowsFlag;
+import rim.core.LargeFlags;
 import rim.core.SearchUtil;
 import rim.exception.RimException;
 import rim.util.ObjectList;
@@ -772,7 +772,7 @@ public class GeneralIndex {
 		// このインデックス管理情報.
 		private GeneralIndex rimIndex;
 		// not in 条件.
-		private RowsFlag notInPositions;
+		private LargeFlags notInPositions;
 		// 現在の読み込み中行番号.
 		private int indexPos;
 		// 現在取得中のIndex要素.
@@ -819,7 +819,7 @@ public class GeneralIndex {
 				final RimIndexElement[] fixIndex = rimIndex.fixIndex;
 				
 				// not検索の場合はin条件は行番号で処理する.
-				final RowsFlag notInPositions = new RowsFlag(fixIndex.length);
+				final LargeFlags notInPositions = new LargeFlags(fixIndex.length);
 				
 				// valueを列型変換して行番号を取得.
 				for(i = 0; i < len; i ++) {

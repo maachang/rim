@@ -9,8 +9,10 @@ import rim.exception.RimException;
 /**
  * 指定長のフラグ配列を管理します.
  */
-public class Flags {
+public class Flags implements BaseFlags<Flags> {
+	// フラグを管理する配列.
 	private int[] flags;
+	// フラグ配列長.
 	private int length;
 	
 	/**

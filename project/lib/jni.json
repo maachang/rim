@@ -1,0 +1,26 @@
+[
+  {
+    "name" : "net.jpountz.util.Native"
+  }
+  ,{
+    "name" : "com.github.luben.zstd.util.Native"
+  }
+  ,{
+    "name" : "com.github.luben.zstd.ZstdCompressCtx",
+    "fields": [
+      {
+        "name": "nativePtr",
+        "allowWrite": true
+      }
+    ]
+  }
+  ,{
+    "name" : "com.github.luben.zstd.ZstdDecompressCtx",
+    "fields": [
+      {
+        "name": "nativePtr",
+        "allowWrite": true
+      }
+    ]
+  }
+]

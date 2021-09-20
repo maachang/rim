@@ -1,8 +1,6 @@
 package rim.util;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.nio.ByteBuffer;
 
 import rim.exception.RimException;
@@ -11,341 +9,505 @@ import rim.exception.RimException;
  * バイナリバッファ.
  */
 public class BinaryBuffer {
+	/**
+	 * 最小バッファ長.
+	 */
 	protected static final int MIN_LENGTH = 256;
+	
+	/**
+	 * デフォルトバッファ長.
+	 */
 	protected static final int DEF_LENGTH = 512;
 
+	// 1つのI/Oバッファの塊.
 	protected static class Entry {
-		byte[] value;
+		// 次のEntry要素.
 		Entry next;
+		// バッファ情報.
+		byte[] value;
+		// 有効書き込み位置.
+		int writePosition;
+		// 読み込み位置.
+		int readPosition;
+		
+		/**
+		 * コンストラクタ.
+		 * @param len 生成サイズを設定します.
+		 */
+		public Entry(int len) {
+			next = null;
+			value = new byte[len];
+			writePosition = 0;
+			readPosition = 0;
+		}
+		
+		/**
+		 * 書き込み可能な長さを取得.
+		 * @return int 書き込み可能な長さが返却されます.
+		 */
+		public int writeRemaining() {
+			return value.length - writePosition;
+		}
+		
+		/**
+		 * 書き込み可能な領域が存在するかチェック.
+		 * @return boolean true の場合、書き込み可能です.
+		 */
+		public boolean hasWriteRemaining() {
+			// 書き込み可能な長さが存在する場合.
+			return value.length > writePosition;
+		}
+		
+		/**
+		 * 指定長の内容が書き込み可能かチェック.
+		 * @param len 今回書き込む予定の長さを設定します.
+		 * @return boolean true の場合、書き込み可能です.
+		 */
+		public boolean hasWriteRemaining(int len) {
+			// 書き込み可能な長さが指定された書き込む予定の
+			// 長さの範囲内の場合.
+			return value.length >= writePosition + len;
+		}
+		
+		/**
+		 * 指定長の内容が書き込み可能かチェック.
+		 * @param buf 今回書き込む予定のByteBufferを設定します.
+		 * @return boolean true の場合、書き込み可能です.
+		 */
+		public boolean hasWriteRemaining(ByteBuffer buf) {
+			return hasWriteRemaining(buf.remaining());
+		}
+		
+		/**
+		 * Entry内の読み込み可能な長さを取得.
+		 * @return int 読み込み可能な長さが返却されます.
+		 */
+		public int readRemaining() {
+			return writePosition - readPosition;
+		}
+		
+		/**
+		 * Entry内は読み込み可能かチェック.
+		 * @return boolean true の場合、読み込み可能です.
+		 */
+		public boolean hasReadRemaining() {
+			return writePosition > readPosition;
+		}
+		
+		/**
+		 * Entry内にバイト情報を書き込む.
+		 * @param b バイト情報を設定します.
+		 * @return boolean true の場合、正しく追加されました.
+		 */
+		public boolean write(byte b) {
+			// Entryの書き込みが完了してる場合.
+			if(!hasWriteRemaining()) {
+				return false;
+			}
+			// １バイト書き込む.
+			value[writePosition ++] = b;
+			return true;
+		}
+		
+		/**
+		 * Entry内にバイナリ情報を書き込む.
+		 * @param b バイナリを設定します.
+		 * @param off オフセット値を設定します.
+		 * @param len 長さを設定します.
+		 * @return int 今回書き込まれた長さが返却されます.
+		 */
+		public int write(byte[] b, int off, int len) {
+			int writeLen;
+			// 書き込むバイナリが存在しない場合.
+			if(len <= 0) {
+				return 0;
+			// 今回の書き込み内容で処理可能な場合.
+			} else if(hasWriteRemaining(len)) {
+				// 指定された長さ分書き込む.
+				writeLen = len;
+			// 指定されたバイナリの全てが書き込み可能でない場合.
+			} else {
+				// Entryに対して書き込み可能な長さを取得.
+				writeLen = writeRemaining();
+			}
+			// 書き込み.
+			System.arraycopy(b, off, value, writePosition, writeLen);
+			// 書き込み長をEntryの有効データ長に反映.
+			writePosition += writeLen;
+			return writeLen;
+		}
+		
+		/**
+		 * Entry内にバイナリ情報を書き込む.
+		 * @param buf ByteBufferを設定します.
+		 * @return int 今回書き込まれた長さが返却されます.
+		 */
+		public int write(ByteBuffer buf) {
+			int writeLen;
+			// 書き込むバイナリ長を取得.
+			final int len = buf.remaining();
+			// 書き込みバッファが存在しない場合.
+			if(len <= 0) {
+				return 0;
+			// 今回のByteBufferで処理可能な場合.
+			} else if(hasWriteRemaining(len)) {
+				// 今回のByteBuffer分書き込む.
+				writeLen = len;
+			// 指定されたバイナリの全てが書き込み可能でない場合.
+			} else {
+				// Entryに対して書き込み可能な長さを取得.
+				writeLen = writeRemaining();
+			}
+			// 書き込み.
+			buf.get(value, writePosition, writeLen);
+			// 書き込み長をEntryの有効データ長に反映.
+			writePosition += writeLen;
+			return writeLen;
+		}
+		
+		/**
+		 * Entry内の読み込み処理.
+		 * @param update 読み込み結果を更新する場合は true.
+		 * @param out 読み込み内容を格納するバイナリ.
+		 * @param off 読み込みバイナリのオフセット値を設定します.
+		 * @param len 読み込みバイナリの長さを設定します.
+		 * @return int 読み込まれた長さが返却されます.
+		 */
+		public int read(boolean update, byte[] out, int off, int len) {
+			int readLen;
+			// このEntryで読み込み可能な長さを取得.
+			final int entryLen = readRemaining();
+			// 読み込みバイナリ長が存在しない場合.
+			// Entryで読み込み可能な内容が存在しない場合.
+			if(len == 0 || entryLen == 0) {
+				return 0;
+			// Entryで読み込み可能な長さよりバイナリ長の方が長い場合.
+			} else if(entryLen < len) {
+				// 読み込み長をEntryで読み込み可能な長さを設定.
+				readLen = entryLen;
+			// 今回の読み込みバイナリで処理可能な場合.
+			} else {
+				readLen = len;
+			}
+			// 読み込み処理.
+			System.arraycopy(value, readPosition, out, off, readLen);
+			// 読み込み結果を更新する場合.
+			if(update) {
+				// 読み込み位置を更新.
+				readPosition += readLen;
+			}
+			return readLen;
+		}
+		
+		/**
+		 * Entry内をスキップ.
+		 * @param len スキップ対象の長さを設定します.
+		 * @return int 読み込まれた長さが返却されます.
+		 */
+		public int skip(int len) {
+			int readLen;
+			// このEntryで読み込み可能な長さを取得.
+			final int entryLen = readRemaining();
+			// 読み込みバイナリ長が存在しない場合.
+			// Entryで読み込み可能な内容が存在しない場合.
+			if(len == 0 || entryLen == 0) {
+				return 0;
+			// Entryで読み込み可能な長さよりバイナリ長の方が長い場合.
+			} else if(entryLen < len) {
+				// 読み込み長をEntryで読み込み可能な長さを設定.
+				readLen = entryLen;
+			// 今回の読み込みバイナリで処理可能な場合.
+			} else {
+				readLen = len;
+			}
+			// 読み込み位置を更新.
+			readPosition += readLen;
+			return readLen;
+		}
+		
+		/**
+		 * バイト一致チェック.
+		 * @param pos 参照する位置を設定します.
+		 * @param b チェック対象のバイナリを設定します.
+		 * @return boolean true の場合一致してます.
+		 */
+		public boolean equals(int pos, byte b) {
+			return value[readPosition + pos] == b;
+		}
 	};
 
-	// Linkが保持するバイナリ長.
-	private int maxBuffer;
+	// Entry.valueのバッファ長.
+	private final int entryValueLength;
 
-	// Link情報.
-	private Entry last;
-	private Entry first;
+	// ラストEntry.
+	private Entry lastEntry;
+	
+	// ファーストEntry.
+	private Entry firstEntry;
 
-	// 書き込み情報長.
-	private int useLength;
-
-	// EntryのLimit値.
-	private int limit;
-
-	// 読み込みポジション.
-	private int position;
-
+	// 全体のデータ長.
+	private int allLength;
+	
 	// クローズフラグ.
 	private boolean closeFlag;
-
-	// クローズ時に情報削除を行うフラグ.
-	private boolean closeToCleanFlag;
 
 	/**
 	 * コンストラクタ.
 	 */
 	public BinaryBuffer() {
-		this(DEF_LENGTH, false);
+		this(DEF_LENGTH);
 	}
-
+	
 	/**
 	 * コンストラクタ.
-	 *
-	 * @param closeToClean
-	 *            [true]を設定した場合、クローズ処理時に情報も破棄します.
-	 */
-	public BinaryBuffer(boolean closeToClean) {
-		this(DEF_LENGTH, closeToClean);
-	}
-
-	/**
-	 * コンストラクタ.
-	 *
-	 * @param size
-	 *            対象の１データのバッファ長を設定します.
+	 * @param size 対象の１データのバッファ長を設定します.
 	 */
 	public BinaryBuffer(int size) {
-		this(size, false);
-	}
-
-	/**
-	 * コンストラクタ.
-	 *
-	 * @param size
-	 *            対象の１データのバッファ長を設定します.
-	 * @param closeToClean
-	 *            [true]を設定した場合、クローズ処理時に情報も破棄します.
-	 */
-	public BinaryBuffer(int size, boolean closeToClean) {
 		if (size <= MIN_LENGTH) {
-			maxBuffer = MIN_LENGTH;
-		} else {
-			maxBuffer = size;
+			size = MIN_LENGTH;
 		}
-		last = new Entry();
-		last.value = new byte[maxBuffer];
-		last.next = null;
-		first = last;
-		useLength = 0;
-		limit = 0;
-		position = 0;
+		entryValueLength = size;
+		lastEntry = null;
+		firstEntry = null;
+		allLength = 0;
 		closeFlag = false;
-		closeToCleanFlag = closeToClean;
 	}
-
+	
+	
+	// クローズチェック.
+	protected void closeCheck() {
+		if(closeFlag) {
+			throw new RimException("It's already closed.");
+		}
+	}
+	
 	/**
 	 * 情報クリア.
 	 */
 	public void clear() {
-		first = last;
-		useLength = 0;
-		limit = 0;
-		position = 0;
-		closeFlag = false;
+		closeCheck();
+		lastEntry = null;
+		firstEntry = null;
+		allLength = 0;
 	}
 
 	/**
-	 * 情報クローズ.
+	 * クローズ.
+	 * ※クローズした場合は、このオブジェクトは利用できなくなります.
 	 */
 	public void close() {
-		closeFlag = true;
-		// クローズ後に、情報も併せて削除指定されている場合.
-		if (closeToCleanFlag) {
-			first = null;
-			last = null;
-			useLength = 0;
-			limit = 0;
-			position = 0;
+		if(!closeFlag) {
+			clear();
+			closeFlag = true;
 		}
+	}
+	
+	// 新しいEntryを追加.
+	private final void addEntry() {
+		// lastEntryに新しい領域を作成.
+		lastEntry.next = new Entry(entryValueLength);
+		// 今回作成したEntryをlastEntryに設定.
+		lastEntry = lastEntry.next;
+	}
+	
+	// Entryが生成されていない場合、新たに作成する.
+	private final void createEntry() {
+		// firstEntryが存在しない場合作成.
+		if(firstEntry == null) {
+			// firstEntryを新規作成.
+			firstEntry = new Entry(entryValueLength);
+			// lastEntryにセット.
+			lastEntry = firstEntry;
+		}
+		// 現在のlastEntryの書き込み領域が存在しない場合.
+		else if(!lastEntry.hasWriteRemaining()) {
+			// 新しいEntryをlastEntryに追加.
+			addEntry();
+		}
+	}
+	
+	/**
+	 * 指定位置までの情報を取得.
+	 * @param pos 指定位置を取得します.
+	 * @retuen Object[] null の場合は指定位置の条件の取得に失敗しました.
+	 *                  正しく取得できた場合は、以下の条件で取得されます.
+	 *                  [0]: 指定位置Entry
+	 *                  [1]: 指定位置Entryの読み込み開始ポジション.
+	 */
+	private final Object[] specifiedPosition(int pos) {
+		int readLen;
+		// 最初のEntryから読み取る.
+		Entry entry = firstEntry;
+		// 読み取り中のEntryが存在しなくなるまで読み取る.
+		while(entry != null) {
+			// 対象Entryの読み込み可能な長さを取得.
+			readLen = entry.readRemaining();
+			// 対象のEntryが指定位置の条件にマッチする.
+			if(pos < readLen) {
+				return new Object[] {entry, pos};
+			}
+			// 今回読み取った内容を読み込みデータ長から削除.
+			pos -= readLen;
+			// 次のEntryを取得.
+			entry = entry.next;
+		}
+		return null;
 	}
 
 	/**
-	 * データセット.
-	 *
-	 * @param b
-	 *            対象のバイナリ情報を設定します.
+	 * 書き込み処理.
+	 * @param b 対象のバイナリ情報を設定します.
 	 */
 	public void write(int b) {
-		if (closeFlag) {
-			throw new RimException("Already closed.");
-		}
-
-		// 書き込みバッファがいっぱいの場合.
-		if (limit >= maxBuffer) {
-			// 新しい領域を作成.
-			last.next = new Entry();
-			last = last.next;
-			last.value = new byte[maxBuffer];
-			last.next = null;
-			limit = 0;
-		}
-		last.value[limit++] = (byte) b;
-		useLength++;
+		// クローズチェック.
+		closeCheck();
+		// Entryが生成されてない場合生成する.
+		createEntry();
+		// 書き込み処理.
+		lastEntry.write((byte)b);
+		// 全体長に書き込んだサイズをセット.
+		allLength ++;
 	}
 
 	/**
-	 * データセット.
-	 *
-	 * @param bin
-	 *            対象のバイナリを設定します.
+	 * 書き込み処理.
+	 * @param bin 対象のバイナリを設定します.
 	 */
 	public void write(byte[] bin) {
 		write(bin, 0, bin.length);
 	}
 
 	/**
-	 * データセット.
-	 *
-	 * @param bin
-	 *            対象のバイナリを設定します.
-	 * @param off
-	 *            対象のオフセット値を設定します.
-	 * @param len
-	 *            対象のデータ長を設定します.
+	 * 書き込み処理.
+	 * @param bin 対象のバイナリを設定します.
+	 * @param off 対象のオフセット値を設定します.
+	 * @param len 対象のデータ長を設定します.
 	 */
 	public void write(byte[] bin, int off, int len) {
-		if (closeFlag) {
-			throw new RimException("Already closed.");
-		} else if (len <= 0) {
-			return;
-		}
-		// 現在の書き込み位置を含む、1つのEntry以上の情報長の場合.
-		if (len + limit > maxBuffer) {
-			int n;
-			int bLen = len;
-			while (true) {
-				// バッファに出力可能.
-				if (maxBuffer > limit + len) {
-					System.arraycopy(bin, off, last.value, limit, len);
-					useLength += bLen;
-					limit += len;
-					return;
-				}
-				// バッファをオーバーする.
-				System.arraycopy(bin, off, last.value, limit, (n = maxBuffer - limit));
-				off += n;
-				len -= n;
-				// 新しい領域を作成.
-				last.next = new Entry();
-				last = last.next;
-				last.value = new byte[maxBuffer];
-				last.next = null;
-				limit = 0;
-			}
-		}
-		// 条件が収まる場合.
-		else if (len > 0) {
-			System.arraycopy(bin, off, last.value, limit, len);
-			useLength += len;
-			limit += len;
-		}
-	}
-
-	/**
-	 * データセット.
-	 *
-	 * @param 対象のByteBufferを設定します
-	 * @exception IOException
-	 *                例外.
-	 */
-	public void write(ByteBuffer buf) throws IOException {
-		if (closeFlag) {
-			throw new IOException("Already closed.");
-		}
-		int len = buf.remaining();
+		// クローズチェック.
+		closeCheck();
+		// 書き込み内容が存在しない場合.
 		if (len <= 0) {
 			return;
 		}
-		// 現在の書き込み位置を含む、1つのBByteLinked以上の情報長の場合.
-		if (len + limit > maxBuffer) {
-			int n;
-			int bLen = len;
-			while (true) {
-				// バッファに出力可能.
-				if (maxBuffer > limit + len) {
-					buf.get(last.value, limit, len);
-					useLength += bLen;
-					limit += len;
-					return;
-				}
-
-				// バッファをオーバーする.
-				buf.get(last.value, limit, (n = maxBuffer - limit));
-				len -= n;
-
-				// 新しい領域を作成.
-				last.next = new Entry();
-				last = last.next;
-				last.value = new byte[maxBuffer];
-				last.next = null;
-				limit = 0;
+		// Entryが生成されてない場合生成する.
+		createEntry();
+		
+		// 書き込み処理.
+		int writeLen;
+		while(true) {
+			// １つのEntryに書き込む.
+			writeLen = lastEntry.write(bin, off, len);
+			// 今回書き込んだサイズをセット.
+			off += writeLen;
+			len -= writeLen;
+			// 全体長に書き込んだサイズをセット.
+			allLength += writeLen;
+			// 書き込みが完了した場合.
+			if(len <= 0) {
+				return;
+			}
+			// 対象Entryの書き込みが完了した場合.
+			else if(!lastEntry.hasWriteRemaining()) {
+				// 新しいEntryを追加.
+				addEntry();
 			}
 		}
-		// 条件が収まる場合.
-		else if (len > 0) {
-			buf.get(last.value, limit, len);
-			useLength += len;
-			limit += len;
+	}
+
+	/**
+	 * データセット.
+	 * @param 対象のByteBufferを設定します
+	 * @exception IOException 例外.
+	 */
+	public void write(ByteBuffer buf) throws IOException {
+		// クローズチェック.
+		closeCheck();
+		// 書き込み可能な情報が存在しない場合.
+		if(!buf.hasRemaining()) {
+			return;
+		}
+		// Entryが生成されてない場合生成する.
+		createEntry();
+		
+		// 書き込み開始.
+		int writeLen;
+		while(true) {
+			// １つのEntryに書き込む.
+			writeLen = lastEntry.write(buf);
+			// 全体長に書き込んだサイズをセット.
+			allLength += writeLen;
+			// 書き込みが完了した場合.
+			if(!buf.hasRemaining()) {
+				return;
+			}
+			// 対象Entryの書き込みが完了した場合.
+			else if(!lastEntry.hasWriteRemaining()) {
+				// 新しいEntryを追加.
+				addEntry();
+			}
 		}
 	}
 
 	/**
 	 * 現在の書き込みバッファ長を取得.
-	 *
-	 * @return int 書き込みバッファ長が返却されます.
-	 */
-	public int writeLength() {
-		return useLength;
-	}
-
-	/**
-	 * 現在の書き込みバッファ長を取得.
-	 *
 	 * @return int 書き込みバッファ長が返却されます.
 	 */
 	public int size() {
-		return useLength;
+		// クローズチェック.
+		closeCheck();
+		return allLength;
 	}
 
 	/**
-	 * クローズ処理が行われている場合.
-	 *
-	 * @return boolean [true]の場合、既にクローズ処理が行われています.
-	 */
-	public boolean isClose() {
-		return closeFlag;
-	}
-
-	/**
-	 * 情報の参照取得. ※この処理では、参照取得されるだけで、ポジション移動はしません.
-	 *
-	 * @param buf
-	 *            対象のバッファ情報を設定します.
+	 * 情報の参照取得.
+	 * ※この処理では、参照モードで情報を取得します.
+	 * @param buf 対象のバッファ情報を設定します.
 	 * @return int 取得された情報長が返却されます.
-	 * @exception IOException
-	 *                例外.
+	 * @exception IOException IO例外.
 	 */
 	public int peek(byte[] buf) throws IOException {
 		return peek(buf, 0, buf.length);
 	}
 
 	/**
-	 * 情報の参照取得. ※この処理では、参照取得されるだけで、ポジション移動はしません.
-	 *
-	 * @param buf
-	 *            対象のバッファ情報を設定します.
-	 * @param off
-	 *            対象のオフセット値を設定します.
-	 * @param len
-	 *            対象の長さを設定します.
+	 * 情報の参照取得.
+	 * ※この処理では、参照モードで情報を取得します.
+	 * @param buf 対象のバッファ情報を設定します.
+	 * @param off 対象のオフセット値を設定します.
+	 * @param len 対象の長さを設定します.
 	 * @return int 取得された情報長が返却されます.
 	 */
 	public int peek(byte[] buf, int off, int len) {
-		if (useLength == 0) {
-			if (closeFlag) {
-				return -1;
+		// クローズチェック.
+		closeCheck();
+		int readLen;
+		int ret = 0;
+		// 最初のEntryから読み取る.
+		Entry entry = firstEntry;
+		// 読み取り中のEntryが存在しなくなるまで読み取る.
+		while(entry != null) {
+			// 対象のEntryを読み取る(読み込み更新なし).
+			readLen = entry.read(false, buf, off, len);
+			// 今回読み取ったデータ長をセット.
+			off += readLen;
+			len -= readLen;
+			ret += readLen;
+			// 読み込みが完了した場合.
+			if(len <= 0) {
+				// 読み取り完了.
+				break;
 			}
-			return 0;
+			// 次のEntryを取得.
+			entry = entry.next;
 		}
-		if (len <= 0) {
-			return 0;
-		} else if (len > useLength) {
-			len = useLength;
-		}
-		int ret = len;
-		Entry n = first;
-
-		if (position > 0) {
-			int tLen = maxBuffer - position;
-			if (len > tLen) {
-				System.arraycopy(n.value, position, buf, off, tLen);
-				len -= tLen;
-				off += tLen;
-				n = n.next;
-			} else {
-				System.arraycopy(n.value, position, buf, off, len);
-				return ret;
-			}
-		}
-		while (len > 0) {
-			if (len > maxBuffer) {
-				System.arraycopy(n.value, 0, buf, off, maxBuffer);
-				len -= maxBuffer;
-				off += maxBuffer;
-				n = n.next;
-			} else {
-				System.arraycopy(n.value, 0, buf, off, len);
-				return ret;
-			}
-		}
-		return 0;
+		// 読み取り完了.
+		return ret;
 	}
 
 	/**
 	 * 情報の取得.
-	 *
-	 * @param buf
-	 *            対象のバッファ情報を設定します.
+	 * @param buf 対象のバッファ情報を設定します.
 	 * @return int 取得された情報長が返却されます.
 	 */
 	public int read(byte[] buf) {
@@ -354,523 +516,221 @@ public class BinaryBuffer {
 
 	/**
 	 * 情報の取得.
-	 *
-	 * @param buf
-	 *            対象のバッファ情報を設定します.
-	 * @param off
-	 *            対象のオフセット値を設定します.
-	 * @param len
-	 *            対象の長さを設定します.
+	 * @param buf 対象のバッファ情報を設定します.
+	 * @param off 対象のオフセット値を設定します.
+	 * @param len 対象の長さを設定します.
 	 * @return int 取得された情報長が返却されます.
 	 */
 	public int read(byte[] buf, int off, int len) {
-		if (useLength == 0) {
-			if (closeFlag) {
-				return -1;
+		// クローズチェック.
+		closeCheck();
+		int readLen;
+		int ret = 0;
+		// 最初のEntryから読み取る.
+		Entry entry = firstEntry;
+		// 読み取り中のEntryが存在しなくなるまで読み取る.
+		while(entry != null) {
+			// 対象のEntryを読み取る(読み込み更新あり).
+			readLen = entry.read(true, buf, off, len);
+			// 今回読み取ったデータ長をセット.
+			off += readLen;
+			len -= readLen;
+			ret += readLen;
+			// 読み込みが完了した場合.
+			if(len <= 0) {
+				// 読み取り完了.
+				break;
 			}
-			return 0;
+			// 次のEntryを取得.
+			entry = entry.next;
 		}
-		if (len <= 0) {
-			return 0;
-		} else if (len > useLength) {
-			len = useLength;
-		}
-		int ret = len;
-		Entry n = first;
-		if (position > 0) {
-			int tLen = maxBuffer - position;
-			if (len > tLen) {
-				System.arraycopy(n.value, position, buf, off, tLen);
-				len -= tLen;
-				off += tLen;
-				n = n.next;
-			} else {
-				System.arraycopy(n.value, position, buf, off, len);
-				first = n;
-				useLength -= ret;
-				position += len;
-				return ret;
-			}
-		}
-		while (len > 0) {
-			if (len > maxBuffer) {
-				System.arraycopy(n.value, 0, buf, off, maxBuffer);
-				len -= maxBuffer;
-				off += maxBuffer;
-				n = n.next;
-			} else {
-				System.arraycopy(n.value, 0, buf, off, len);
-				first = n;
-				useLength -= ret;
-				position = len;
-				return ret;
-			}
-		}
-		return 0;
+		// 次の読み込み開始位置のEntryをFirstEntryにセット.
+		firstEntry = entry;
+		// 全体長から今回の取得長を反映する.
+		allLength -= ret;
+		return ret;
 	}
 
 	/**
-	 * データスキップ.
-	 *
+	 * スキップ.
 	 * @parma len スキップするデータ長を設定します.
 	 * @return int 実際にスキップされた数が返却されます.
 	 *             [-1]が返却された場合、オブジェクトはクローズしています.
 	 */
 	public int skip(int len) {
-		if (useLength == 0) {
-			if (closeFlag) {
-				return -1;
+		// クローズチェック.
+		closeCheck();
+		int readLen;
+		int ret = 0;
+		// 最初のEntryから読み取る.
+		Entry entry = firstEntry;
+		// 読み取り中のEntryが存在しなくなるまで読み取る.
+		while(entry != null) {
+			// 対象のEntryをスキップする.
+			readLen = entry.skip(len);
+			// 今回読み取ったデータ長をセット.
+			len -= readLen;
+			ret += readLen;
+			// 読み込みが完了した場合.
+			if(len <= 0) {
+				// 読み取り完了.
+				break;
 			}
-			return 0;
+			// 次のEntryを取得.
+			entry = entry.next;
 		}
-		if (len <= 0) {
-			return 0;
-		} else if (len > useLength) {
-			len = useLength;
-		}
-		int ret = len;
-		Entry n = first;
-
-		if (position > 0) {
-			int tLen = maxBuffer - position;
-			if (len > tLen) {
-				len -= tLen;
-				n = n.next;
-			} else {
-				first = n;
-				useLength -= ret;
-				position += len;
-				return ret;
-			}
-		}
-		while (len > 0) {
-			if (len > maxBuffer) {
-				len -= maxBuffer;
-				n = n.next;
-			} else {
-				first = n;
-				useLength -= ret;
-				position = len;
-				return ret;
-			}
-		}
-		return 0;
+		// 次の読み込み開始位置のEntryをFirstEntryにセット.
+		firstEntry = entry;
+		// 全体長から今回の取得長を反映する.
+		allLength -= ret;
+		return ret;
+	}
+	
+	/**
+	 * データ取得.
+	 * @return byte[] 設定されているデータを全て取得します.
+	 */
+	public byte[] toByteArray() {
+		return toByteArray(false);
 	}
 
 	/**
 	 * データ取得.
-	 *
+	 * @param readByClear true の場合取得したデータは削除されます.
 	 * @return byte[] 設定されているデータを全て取得します.
 	 */
-	public byte[] toByteArray() {
-		int tLen;
-		int len = useLength;
-		int off = 0;
-		Entry n = first;
-		byte[] ret = new byte[len];
-
-		if (position > 0) {
-			System.arraycopy(n.value, position, ret, off,
-					(tLen = (len > maxBuffer - position) ? maxBuffer - position : len));
-			len -= tLen;
-			off += tLen;
-			n = n.next;
+	public byte[] toByteArray(boolean readByClear) {
+		int len;
+		// 現在の読み込み可能なバイナリ長のデータを生成.
+		byte[] ret = new byte[allLength];
+		// peekで読み取る.
+		len = peek(ret, 0, allLength);
+		if(readByClear) {
+			clear();
 		}
-		while (len > 0) {
-			System.arraycopy(n.value, 0, ret, off, (tLen = (len > maxBuffer) ? maxBuffer : len));
-			len -= tLen;
-			off += tLen;
-			n = n.next;
+		// 読み込み可能な長さが取得した長さと一致しない場合は例外.
+		if(len != allLength) {
+			throw new RimException("The planned length (" + allLength
+				+ ") does not match the obtained length (" + len + ").");
 		}
 		return ret;
 	}
-
-	/**
-	 * 対象OutputStreamに、現在のデータを出力. データは全削除されます.
-	 *
-	 * @param o
-	 *            対象のOutputStreamを設定します.
-	 * @exception Exception
-	 *                例外.
-	 */
-	public void outputStream(OutputStream o) throws Exception {
-		int len = (first == last) ? useLength : maxBuffer;
-		while (len != 0) {
-			o.write(pop(), position, len - position);
-			len = (first == last) ? useLength : maxBuffer;
-		}
-	}
-
-	/**
-	 * 現在の読み込みポジションを取得.
-	 *
-	 * @return int 現在の読み込みポジションが返却されます.
-	 */
-	public int getPosition() {
-		return position;
-	}
-
-	/**
-	 * 一番上のバイナリサイズを取得.
-	 *
-	 * @return int 一番上のバイナリサイズを取得します.
-	 */
-	public int getFirstLength() {
-		return (first == last) ? useLength : maxBuffer;
-	}
-
-	/**
-	 * 一番上のバイナリ情報を取得. バイナリが取得された場合は、その情報は削除されます.
-	 *
-	 * @return byte[] 一番上のバイナリ情報が返却されます.
-	 */
-	public byte[] pop() {
-		byte[] b = first.value;
-		if (first == last) {
-			useLength = 0;
-			position = 0;
-			limit = 0;
-		} else {
-			useLength -= (maxBuffer - position);
-			position = 0;
-			first = first.next;
-		}
-		return b;
-	}
-
+	
 	/**
 	 * 指定条件の位置を取得.
-	 *
-	 * @param chk
-	 *            チェック対象のバイナリ情報を設定します.
-	 * @return int 取得データ長が返却されます. [-1]の場合は情報は存在しません.
+	 * @param chk チェック対象のバイナリ情報を設定します.
+	 * @return int 取得データ長が返却されます.
+	 *             [-1]の場合は情報は存在しません.
 	 */
 	public int indexOf(final byte[] chk) {
-		Entry nsrc;
-		byte[] nbin;
-		Entry src = first;
-		byte[] bin = src.value;
-		int bLen = bin.length;
-
-		int p, pp, n, len, j, cLen;
-		p = position;
-		len = useLength;
-		cLen = chk.length;
-
-		if (cLen == 1) {
-			byte f = chk[0];
-			for (int i = 0; i < len; i++, p++) {
-				if (p >= bLen) {
-					src = src.next;
-					bin = src.value;
-					p = 0;
-				}
-				if (f == bin[p]) {
-					return i;
-				}
-			}
-		} else {
-			byte f = chk[0];
-			for (int i = 0; i < len; i++, p++) {
-				if (p >= bLen) {
-					if((src = src.next) == null) {
-						return -1;
-					}
-					bin = src.value;
-					p = 0;
-				}
-				if (f == bin[p]) {
-					for (j = i, n = 1, nsrc = src, nbin = bin, pp = p + 1; j < len; j++, pp++) {
-						if (pp >= bLen) {
-							if((nsrc = nsrc.next) == null) {
-								return -1;
-							}
-							nbin = nsrc.value;
-							pp = 0;
-						}
-						if (chk[n++] != nbin[pp]) {
-							break;
-						} else if (n == cLen) {
-							return i;
-						}
-					}
-				}
-			}
-		}
-		return -1;
+		return indexOf(chk, 0);
 	}
 
 	/**
 	 * 指定条件の位置を取得.
-	 *
-	 * @param chk
-	 *            チェック対象のバイナリ情報を設定します.
-	 * @param off
-	 *            検索開始位置を設定します.
-	 * @return int 取得データ長が返却されます. [-1]の場合は情報は存在しません.
+	 * @param chk チェック対象のバイナリ情報を設定します.
+	 * @param off 検索開始位置を設定します.
+	 * @return int 取得データ長が返却されます.
+	 *             [-1]の場合は情報は存在しません.
 	 */
 	public int indexOf(final byte[] chk, int off) {
-		if (off >= useLength) {
+		closeCheck();
+		// 開始位置を取得.
+		Object[] o = specifiedPosition(off);
+		// 取得に失敗した場合.
+		if(o == null) {
+			// 検索結果なし.
 			return -1;
 		}
-		Entry nsrc;
-		byte[] nbin;
-		Entry src = first;
-		byte[] bin = src.value;
-		int bLen = bin.length;
-
-		int p, pp, n, len, j, cLen;
-		p = position;
-		len = useLength;
-		cLen = chk.length;
-
-		n = off;
-		if (n > p) {
-			n -= p;
-			p = 0;
-			while (n > maxBuffer) {
-				src = src.next;
-				bin = src.value;
-				n -= maxBuffer;
-			}
-		}
-		p += n;
-
-		if (cLen == 1) {
-			byte f = chk[0];
-			for (int i = 0; i < len; i++, p++) {
-				if (p >= bLen) {
-					src = src.next;
-					bin = src.value;
-					p = 0;
-				}
-				if (f == bin[p]) {
-					return i;
-				}
-			}
-		} else {
-			byte f = chk[0];
-			for (int i = 0; i < len; i++, p++) {
-				if (p >= bLen) {
-					src = src.next;
-					bin = src.value;
-					p = 0;
-				}
-				if (f == bin[p]) {
-					for (j = i, n = 1, nsrc = src, nbin = bin, pp = p + 1; j < len; j++, pp++) {
-						if (pp >= bLen) {
-							nsrc = nsrc.next;
-							nbin = nsrc.value;
-							pp = 0;
-						}
-						if (chk[n++] != nbin[pp]) {
-							break;
-						} else if (n == cLen) {
-							return i;
-						}
+		
+		// 開始位置の情報を取得.
+		Entry entry = (Entry)o[0];
+		int pos = (Integer)o[1];
+		o = null;
+		
+		// 対象の最初の１文字.
+		final byte firstChk = chk[0];
+		// 対象の長さ.
+		final int chkLength = chk.length;
+		// 累積読み込みカウント.
+		int readCount = 0;
+		
+		int i, j, len;
+		int chkPos, secondPos, lenJ;
+		Entry secondEntry;
+		
+		// 検索開始.
+		while(entry != null) {
+			// Entryで読み込み可能な長さを取得.
+			len = entry.readRemaining();
+			for(i = pos; i < len; i ++) {
+				// 対象の１文字目の内容が一致した場合.
+				if(entry.equals(i, firstChk)) {
+					// 対象の長さが１文字の場合.
+					if(chkLength == 1) {
+						// 検索結果を返却.
+						return i + readCount;
 					}
-				}
-			}
-		}
-		return -1;
-	}
-
-	/**
-	 * 検索一致条件までの情報を取得.
-	 *
-	 * @param buf
-	 *            設定対象のバイナリ情報を設定します.
-	 * @param off
-	 *            設定対象のオフセット値を設定します.
-	 * @param chk
-	 *            チェック対象のバイナリ情報を設定します.
-	 * @return int 取得データ長が返却されます. [-1]の場合は情報は存在しません.
-	 *         [-2]の場合は、情報が大きすぎて、設定対象のバイナリ情報に格納できません.
-	 */
-	public int search(final byte[] buf, int off, final byte[] chk) {
-		Entry nsrc;
-		byte[] nbin;
-		Entry src = first;
-		byte[] bin = src.value;
-		int bLen = bin.length;
-		int p, pp, n, len, j, cLen;
-		p = position;
-		len = useLength;
-		cLen = chk.length;
-		if (cLen == 1) {
-			byte f = chk[0];
-			for (int i = 0; i < len; i++, p++) {
-				if (p >= bLen) {
-					src = src.next;
-					bin = src.value;
-					p = 0;
-				}
-				if (f == bin[p]) {
-					if (buf.length > i + 1 + off) {
-						return read(buf, off, i + 1);
-					}
-					return -2;
-				}
-			}
-		} else {
-			byte f = chk[0];
-			for (int i = 0; i < len; i++, p++) {
-				if (p >= bLen) {
-					src = src.next;
-					bin = src.value;
-					p = 0;
-				}
-				if (f == bin[p]) {
-					for (j = i, n = 1, nsrc = src, nbin = bin, pp = p + 1; j < len; j++, pp++) {
-						if (pp >= bLen) {
-							nsrc = nsrc.next;
-							nbin = nsrc.value;
-							pp = 0;
-						}
-						if (chk[n++] != nbin[pp]) {
-							break;
-						} else if (n == cLen) {
-							if (buf.length > i + cLen + off) {
-								return read(buf, off, i + cLen);
+					
+					// 2文字目からチェック.
+					chkPos = 1;
+					// 2文字目の開始番号.
+					secondPos = i + 1;
+					// Entryの長さ.
+					lenJ = len;
+					// 対象Entry.
+					secondEntry = entry;
+					
+					// ２文字以降を検索.
+					while(secondEntry != null) {
+						// 検索開始.
+						for(j = secondPos; j < lenJ; j ++) {
+							// 2文字目以降の内容が一致した場合.
+							if(secondEntry.equals(j, chk[chkPos ++])) {
+								// 対象が見つかった場合.
+								if(chkPos == chkLength) {
+									// 検索結果を返却.
+									return i + readCount;
+								}
+							// 2文字目以降の内容の不一致.
+							} else {
+								// whileループを終わらせる.
+								secondEntry = null;
+								break;
 							}
-							return -2;
+						}
+						// 次のEntryに跨いだ検索の場合.
+						if(secondEntry != null) {
+							// 次のEntryをセット.
+							secondEntry = secondEntry.next;
+							// 次の情報が存在する場合.
+							if(secondEntry != null) {
+								// 次の読み込み可能な長さを取得する.
+								lenJ = secondEntry.readRemaining();
+								// positionを0にセット.
+								secondPos = 0;
+							}
 						}
 					}
 				}
 			}
+			// 次のEntryをセット.
+			entry = entry.next;
+			// positionを0にセット.
+			pos = 0;
+			// 累積読み込みカウントに今回分の
+			// 読み込み長をセット.
+			readCount += len;
 		}
 		return -1;
 	}
 
 	/**
 	 * データが存在するかチェック.
-	 *
 	 * @return boolean [true]の場合、空です.
 	 */
 	public boolean isEmpty() {
-		return useLength == 0;
+		closeCheck();
+		return allLength == 0;
 	}
-
-	/**
-	 * InputStreamオブジェクトを取得.
-	 * @return InputStream InputStreamが返却されます.
-	 */
-	public InputStream getInputStream() {
-		return new NioBufferByInputStream(this);
-	}
-
-	/**
-	 * OutputStreamオブジェクトを取得.
-	 * @return OutputStream OutputStreamが返却されます.
-	 */
-	public OutputStream getOutputStream() {
-		return new NioBufferByOutputStream(this);
-	}
-
-	// NioBuffer用のInputStream.
-	private static final class NioBufferByInputStream extends InputStream {
-		private final byte[] b1 = new byte[1];
-		private BinaryBuffer buffer;
-		protected NioBufferByInputStream(BinaryBuffer buffer) {
-			if(buffer == null) {
-				throw new NullPointerException();
-			}
-			this.buffer = buffer;
-		}
-		@Override
-		public void close() throws IOException {
-			this.buffer = null;
-		}
-		private void checkClose() throws IOException {
-			if(isClose()) {
-				throw new IOException("It's already closed.");
-			}
-		}
-		public boolean isClose() {
-			return this.buffer == null;
-		}
-		@Override
-		public int read() throws IOException {
-			checkClose();
-			byte[] b = b1;
-			int len = this.buffer.read(b, 0, 1);
-			if(len <= 0) {
-				return -1;
-			}
-			return (b[0] & 0x000000ff);
-		}
-		@Override
-		public int read(byte b[]) throws IOException {
-			checkClose();
-			int ret = this.buffer.read(b, 0, b.length);
-			if(ret <= 0) {
-				return -1;
-			}
-			return ret;
-		}
-		@Override
-		public int read(byte b[], int off, int len)
-			throws IOException {
-			checkClose();
-			int ret = this.buffer.read(b, off, len);
-			if(ret <= 0) {
-				return -1;
-			}
-			return ret;
-		}
-		@Override
-		public long skip(long n) throws IOException {
-			checkClose();
-			return this.buffer.skip((int)n);
-		}
-		@Override
-		public int available() throws IOException {
-			checkClose();
-			return this.buffer.size();
-		}
-	}
-
-	/** NioBuffer用のOutputStream. **/
-	private static final class NioBufferByOutputStream extends OutputStream {
-		private final byte[] b1 = new byte[1];
-		private BinaryBuffer buffer;
-
-		public NioBufferByOutputStream(BinaryBuffer buffer) {
-			if(buffer == null) {
-				throw new NullPointerException();
-			}
-			this.buffer = buffer;
-		}
-		@Override
-		public void close() throws IOException {
-			this.buffer = null;
-		}
-		private void checkClose() throws IOException {
-			if(isClose()) {
-				throw new IOException("It's already closed.");
-			}
-		}
-		public boolean isClose() {
-			return this.buffer == null;
-		}
-		@Override
-		public void flush() throws IOException {
-			checkClose();
-		}
-		@Override
-		public void write(int b) throws IOException {
-			b1[0] = (byte)b;
-			write(b1);
-		}
-		@Override
-		public void write(byte[] b) throws IOException {
-			write(b, 0, b.length);
-		}
-		@Override
-		public void write(byte[] b, int off, int len) throws IOException {
-			checkClose();
-			buffer.write(b, off, len);
-		}
-	}
-
 }

@@ -16,7 +16,7 @@ public final class ZstdCompress {
 	/**
 	 * デフォルトの圧縮レベル.
 	 */
-	public static final int DEFAULT_LEVEL =3;
+	public static final int DEFAULT_LEVEL = 3;
 	
 	// パッケージ名.
 	private static final String ZSTD_PACKAGE = "com.github.luben.zstd";
